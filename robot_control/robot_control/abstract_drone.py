@@ -49,10 +49,9 @@ class ADrone(AVehicle):
         """
         self.arm()
         self.takeoff(goal.request.altitude)
-        rate = self.create_rate(20)
         feedback_msg = ArmTakeoff.Feedback()
         while True:
-            rate.sleep()
+            self._check_rate.sleep()
             distance = self.distance_to_target()    
             reached = self.reached_target(distance=distance)        
             if distance is not None: #publish distance to target
@@ -81,9 +80,8 @@ class ADrone(AVehicle):
         """Action callback to land vehicle.
         """        
         self.land()
-        rate = self.create_rate(20)
         while True:
-            rate.sleep()
+            self._check_rate.sleep()
             if goal.is_cancel_requested:
                 goal.canceled()
                 return Land.Result()

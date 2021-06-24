@@ -40,6 +40,10 @@ find_package(builtin_interfaces REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/ArmTakeoff.action"
   "action/Land.action"
+  "action/GoWaypoint.action"
+  "action/FollowWaypoints.action"
+
+  "msg/Waypoint.msg"
 
   DEPENDENCIES builtin_interfaces std_msgs geometry_msgs
 )

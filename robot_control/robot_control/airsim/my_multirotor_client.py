@@ -17,22 +17,17 @@ class MyMultirotorClient(MultirotorClient):
         self.enableApiControl(True, vehicle_name=self._vehicle_name)
         self._state = MultirotorState()
 
+    ########################
+    ## Commands
+    ########################
     def land(self):
         """Asynchronously tells vehicle to land."""
         return self.landAsync(vehicle_name=self._vehicle_name)
 
-    def is_landed(self):
-        """If vehicle has landed.
-        
-        Returns:
-            bool: Whether the vehicle has landed
-        """
-        state = self._state.landed_state
-        return state == LandedState.Landed
-
-    def takeoff(self):
+    def takeoff(self, altitude: float):
         """Asynchronously tells vehicle to takeoff."""
         return self.takeoffAsync(vehicle_name=self._vehicle_name)
+        # return self.moveToZAsync(altitude, 0.5, vehicle_name=self._vehicle_name)
 
     def arm(self):
         """Arms vehicle.
@@ -50,6 +45,59 @@ class MyMultirotorClient(MultirotorClient):
         """
         return self.armDisarm(False, vehicle_name=self._vehicle_name)
 
+    def move_position(self, x: float, y: float, z: float, heading: float):
+        """Moves to position and heading.
+
+        Args:
+            x (float): x position meters
+            y (float): y position meters
+            z (float): z position meters
+            heading (float): angle radians
+        """
+        yaw_mode = YawMode(is_rate=False, yaw_or_rate=np.rad2deg(heading))
+        return self.moveToPositionAsync(x, y, z, 0.5, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
+
+    def move_world_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
+        """Moves by velocity in world NED frame.
+
+        Args:
+            vx (float): x velocity m/s
+            vy (float): y velocity m/s
+            vz (float): z velocity m/s
+            yaw_rate (float): yaw rate rad/s
+        """
+        # TODO: figure out how long duration should be (defaults to 1.0 rn)
+        yaw_mode = YawMode(is_rate=True, yaw_or_rate=np.rad2deg(yaw_rate))
+        return self.moveByVelocityAsync(vx, vy, vz, 1.0, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
+    
+    def move_body_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
+        """Moves by velocity in local NED frame.
+
+        Args:
+            vx (float): x velocity m/s
+            vy (float): y velocity m/s
+            vz (float): z velocity m/s
+            yaw_rate (float): yaw rate rad/s
+        """
+        # TODO: figure out how long duration should be (defaults to 1.0 rn)
+        yaw_mode = YawMode(is_rate=True, yaw_or_rate=np.rad2deg(yaw_rate))
+        return self.moveByVelocityBodyFrameAsync(vx, vy, vz, 1.0, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
+
+    ########################
+    ## Checking states
+    ########################
+    def is_landed(self):
+        """If vehicle has landed.
+        
+        Returns:
+            bool: Whether the vehicle has landed
+        """
+        state = self._state.landed_state
+        return state == LandedState.Landed
+
+    ########################
+    ## Get states
+    ########################
     def update_state(self):
         """Updates multirotor state. Meant to be called in one thread only.
 

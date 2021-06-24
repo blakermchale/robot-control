@@ -1,0 +1,6 @@
+float32 tolerance
+robot_control_interfaces/Waypoint[] waypoints
+---
+---
+float32 distance  # distance to next waypoint
+uint8 idx  # index for current waypoint

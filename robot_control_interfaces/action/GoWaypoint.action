@@ -1,0 +1,4 @@
+robot_control_interfaces/Waypoint waypoint
+---
+---
+float32 distance
