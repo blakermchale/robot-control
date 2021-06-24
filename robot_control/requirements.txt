@@ -1,0 +1,7 @@
+# Airsim
+airsim
+msgpack-rpc-python
+# General
+numpy
+scipy
+navpy
