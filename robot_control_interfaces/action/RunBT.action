@@ -1,0 +1,8 @@
+#goal definition
+string behavior_tree
+---
+#result definition
+std_msgs/Empty result
+---
+builtin_interfaces/Duration time
+int16 number_of_recoveries

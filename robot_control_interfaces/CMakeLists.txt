@@ -42,6 +42,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Land.action"
   "action/GoWaypoint.action"
   "action/FollowWaypoints.action"
+  "action/RunBT.action"
 
   "msg/Waypoint.msg"
 
