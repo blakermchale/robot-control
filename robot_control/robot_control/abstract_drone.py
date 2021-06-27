@@ -43,12 +43,25 @@ class ADrone(AVehicle):
         """
         raise NotImplementedError
 
-    # TODO: implement arm takeoff sequence with methods that aren't implemented
+    #######################
+    ## Actions
+    #######################
+    def _precheck_go_waypoint_goal(self):
+        if not self.is_armed():
+            self.get_logger().warn("GoWaypoint: aborted not armed")
+            return False
+        if self.is_landed():
+            self.get_logger().warn("GoWaypoint: aborted not taken off")
+            return False
+        return True
+
     def _handle_arm_takeoff_goal(self, goal):
         """Action callback for arming and taking off vehicle.
         """
         self.arm()
+        self.get_logger().debug("ArmTakeoff: sending takeoff")
         self.takeoff(goal.request.altitude)
+        self.get_logger().debug("ArmTakeoff: waiting to reach takeoff altitude")
         feedback_msg = ArmTakeoff.Feedback()
         while True:
             self._check_rate.sleep()

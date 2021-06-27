@@ -3,6 +3,8 @@ from airsim import MultirotorClient, YawMode, DrivetrainType, LandedState, Multi
 import numpy as np
 import os
 
+from airsim.types import RotorStates
+
 class MyMultirotorClient(MultirotorClient):
     """
     Client class for interfacing with airsim multirotor api.
@@ -16,6 +18,7 @@ class MyMultirotorClient(MultirotorClient):
         self._vehicle_name = namespace
         self.enableApiControl(True, vehicle_name=self._vehicle_name)
         self._state = MultirotorState()
+        self._rotor_states = RotorStates()
 
     ########################
     ## Commands
@@ -26,8 +29,8 @@ class MyMultirotorClient(MultirotorClient):
 
     def takeoff(self, altitude: float):
         """Asynchronously tells vehicle to takeoff."""
-        return self.takeoffAsync(vehicle_name=self._vehicle_name)
-        # return self.moveToZAsync(altitude, 0.5, vehicle_name=self._vehicle_name)
+        # return self.takeoffAsync(vehicle_name=self._vehicle_name)  # it seems like drone actually only goes 1.5 m up instead of 3.0 m
+        return self.moveToZAsync(altitude, 3.0, vehicle_name=self._vehicle_name)
 
     def arm(self):
         """Arms vehicle.
@@ -55,7 +58,7 @@ class MyMultirotorClient(MultirotorClient):
             heading (float): angle radians
         """
         yaw_mode = YawMode(is_rate=False, yaw_or_rate=np.rad2deg(heading))
-        return self.moveToPositionAsync(x, y, z, 0.5, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
+        return self.moveToPositionAsync(x, y, z, 3.0, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
 
     def move_world_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
         """Moves by velocity in world NED frame.
@@ -106,6 +109,15 @@ class MyMultirotorClient(MultirotorClient):
         """
         self._state = self.getMultirotorState(vehicle_name=self._vehicle_name)
         return self._state
+
+    def update_rotor_states(self):
+        """Updates rotor states. Meant to be called in one thread only.
+
+        Returns:
+            RotorStates: state of rotors
+        """
+        self._rotor_states = self.getRotorStates(vehicle_name=self._vehicle_name)
+        return self._rotor_states
 
     def get_position(self):
         """Gets current position of drone.

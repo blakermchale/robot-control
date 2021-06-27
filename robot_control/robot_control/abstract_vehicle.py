@@ -13,6 +13,7 @@ from std_msgs.msg import Header
 # ROS interfaces
 from geometry_msgs.msg import PointStamped, Point, PoseStamped, Twist, Quaternion
 from nav_msgs.msg import Odometry
+from std_srvs.srv import Trigger
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from robot_control_interfaces.msg import Waypoint
 # Common libraries
@@ -44,6 +45,11 @@ class AVehicle(Node):
         # Subscribers
         self._sub_vel = self.create_subscription(Twist, "cmd/velocity", self._callback_velocity, 1)
 
+        # Services
+        self._srv_arm = self.create_service(Trigger, "arm", self._handle_arm)
+        self._srv_disarm = self.create_service(Trigger, "disarm", self._handle_disarm)
+        self._srv_kill = self.create_service(Trigger, "kill", self._handle_kill)
+
         # Actions
         self._server_go_waypoint = ActionServer(self, GoWaypoint, "go_waypoint", self._handle_go_waypoint_goal,
             cancel_callback=self._handle_go_waypoint_cancel)
@@ -70,11 +76,27 @@ class AVehicle(Node):
         raise NotImplementedError
 
     def arm(self):
-        """Arms vehicle."""
+        """Arms vehicle.
+        
+        Returns:
+            bool: Flag indicating successful command.
+        """
         raise NotImplementedError
 
     def disarm(self):
-        """Disarms vehicle."""
+        """Disarms vehicle.
+        
+        Returns:
+            bool: Flag indicating successful command.
+        """
+        raise NotImplementedError
+    
+    def kill(self):
+        """Kills vehicle.
+
+        Returns:
+            bool: Flag indicating successful command.
+        """
         raise NotImplementedError
 
     def set_target(self, x: float = np.nan, y: float = np.nan, z: float = np.nan):
@@ -94,6 +116,19 @@ class AVehicle(Node):
             x (float): x position meters
             y (float): y position meters
             z (float): z position meters
+            frame (int, optional): Enum specifying frame for commands. Defaults to Waypoint.LOCAL_NED.
+        """
+        raise NotImplementedError
+
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Waypoint.LOCAL_NED):
+        """Sends a velocity command to the vehicle in a specified frame.
+
+        Args:
+            vx (float): x velocity (m/s)
+            vy (float): y velocity (m/s)
+            vz (float): z velocity (m/s)
+            yaw_rate (float): yaw rate (rad/s)
+            frame (int, optional): Enum specifying frame for commands. Defaults to Waypoint.LOCAL_NED.
         """
         raise NotImplementedError
 
@@ -134,51 +169,76 @@ class AVehicle(Node):
     ## Actions
     ########################
     def _handle_go_waypoint_goal(self, goal: GoWaypoint):
-        """Goes to a single waypoint."""
-        if not self.is_armed():
-            self.get_logger().warn("GoWaypoint: aborted already armed")
+        """Callback for going to a single waypoint."""
+        if not self._precheck_go_waypoint_goal():
             goal.abort()
             return GoWaypoint.Result()
         position = goal.request.waypoint.position
         heading = goal.request.waypoint.heading
-        frame = goal.request.frame
+        frame = goal.request.waypoint.frame
         self.send_waypoint(position.x, position.y, position.z, heading, frame)
         feedback_msg = GoWaypoint.Feedback()
         while True:
             self._check_rate.sleep()
             distance = self.distance_to_target()    
-            reached = self.reached_target(distance=distance)        
-            if distance is not None: #publish distance to target
+            reached = self.reached_target(distance=distance)     
+            if distance is not None:  # publish feedback
                 feedback_msg.distance = float(distance)
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
-                goal.canceled() #handle cancel action
+                goal.canceled()  #handle cancel action
                 return GoWaypoint.Result()
             if reached:
                 self.get_logger().info("GoWaypoint: reached destination")
-                goal.succeed() #handle sucess
+                goal.succeed()  #handle success
                 return GoWaypoint.Result()
-        raise NotImplementedError
+
+    def _precheck_go_waypoint_goal(self):
+        """Performs prechecks to see if vehicle can go to waypoint."""
+        if not self.is_armed():
+            self.get_logger().warn("GoWaypoint: aborted not armed")
+            return False
+        return True
 
     def _handle_go_waypoint_cancel(self, cancel):
-        """Cancels waypoint."""
+        """Callback for cancelling waypoint."""
         self.halt()
         return CancelResponse.ACCEPT
 
     def _handle_follow_waypoints_goal(self, goal: FollowWaypoints):
-        """Follows a path of waypoints."""
+        """Callback for following a path of waypoints."""
         raise NotImplementedError
 
     def _handle_follow_waypoints_cancel(self, cancel):
-        """Cancels path."""
+        """Callback for cancelling path."""
         raise NotImplementedError
+
+    ########################
+    ## Services
+    ########################
+    def _handle_arm(self, req, res):
+        """Callback for arming vehicle."""
+        res.success = self.arm()
+        return res
+
+    def _handle_disarm(self, req, res):
+        """Callback for disarming vehicle."""
+        res.success = self.disarm()
+        return res
+
+    def _handle_kill(self, req, res):
+        """Callback for killing vehicle."""
+        res.success = self.kill()
+        return res
 
     ########################
     ## Subscribers
     ########################
     def _callback_velocity(self, msg: Twist):
         """Callback for receiving velocity commands to send to vehicle."""
-        raise NotImplementedError
+        v = msg.linear
+        yaw_rate = msg.angular.z
+        self.send_velocity(v.x, v.y, v.z, yaw_rate, Waypoint.LOCAL_NED)
 
     ########################
     ## Publishers
