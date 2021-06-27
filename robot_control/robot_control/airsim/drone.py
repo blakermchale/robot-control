@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # This package
+from robot_control import Frame
 from robot_control.abstract_drone import ADrone
 from robot_control.airsim.vehicle import Vehicle
 from robot_control.airsim.my_multirotor_client import MyMultirotorClient
@@ -50,6 +51,14 @@ class Drone(ADrone, Vehicle):
         # TODO: handle frame conversions
         self.set_target(x, y, z)
         self._client.move_position(x, y, z, heading)
+
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.LOCAL_NED):
+        if frame == Frame.LOCAL_NED:
+            self._client.move_local_velocity(vx, vy, vz, yaw_rate)
+        elif frame == Frame.BODY_NED:
+            self._client.move_body_velocity(vx, vy, vz, yaw_rate)
+        else:
+            self.get_logger().error(f"Frame {frame.name} is not supported")
 
     #######################
     ## Checking states

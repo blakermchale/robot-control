@@ -60,7 +60,7 @@ class MyMultirotorClient(MultirotorClient):
         yaw_mode = YawMode(is_rate=False, yaw_or_rate=np.rad2deg(heading))
         return self.moveToPositionAsync(x, y, z, 3.0, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
 
-    def move_world_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
+    def move_local_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
         """Moves by velocity in world NED frame.
 
         Args:
@@ -69,12 +69,12 @@ class MyMultirotorClient(MultirotorClient):
             vz (float): z velocity m/s
             yaw_rate (float): yaw rate rad/s
         """
-        # TODO: figure out how long duration should be (defaults to 1.0 rn)
+        # TODO: figure out how long duration should be
         yaw_mode = YawMode(is_rate=True, yaw_or_rate=np.rad2deg(yaw_rate))
-        return self.moveByVelocityAsync(vx, vy, vz, 1.0, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
+        return self.moveByVelocityAsync(vx, vy, vz, 0.1, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
     
     def move_body_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
-        """Moves by velocity in local NED frame.
+        """Moves by velocity in body NED frame.
 
         Args:
             vx (float): x velocity m/s
@@ -82,9 +82,9 @@ class MyMultirotorClient(MultirotorClient):
             vz (float): z velocity m/s
             yaw_rate (float): yaw rate rad/s
         """
-        # TODO: figure out how long duration should be (defaults to 1.0 rn)
+        # TODO: figure out how long duration should be
         yaw_mode = YawMode(is_rate=True, yaw_or_rate=np.rad2deg(yaw_rate))
-        return self.moveByVelocityBodyFrameAsync(vx, vy, vz, 1.0, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
+        return self.moveByVelocityBodyFrameAsync(vx, vy, vz, 0.1, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
 
     ########################
     ## Checking states

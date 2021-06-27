@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # ROS libraries
-from types import FrameType
-from airsim.types import Pose
 import rclpy
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.qos import QoSProfile
@@ -19,6 +17,13 @@ from robot_control_interfaces.msg import Waypoint
 # Common libraries
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+from enum import IntEnum
+
+
+class Frame(IntEnum):
+    LLA = Waypoint.LLA
+    LOCAL_NED = Waypoint.LOCAL_NED
+    BODY_NED = Waypoint.BODY_NED
 
 
 class AVehicle(Node):
@@ -109,18 +114,18 @@ class AVehicle(Node):
         """
         self._target_position = np.asfarray([x, y, z])
     
-    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int = Waypoint.LOCAL_NED):
+    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int = Frame.LOCAL_NED):
         """Sends a waypoint to the vehicle in a specified frame.
 
         Args:
             x (float): x position meters
             y (float): y position meters
             z (float): z position meters
-            frame (int, optional): Enum specifying frame for commands. Defaults to Waypoint.LOCAL_NED.
+            frame (int, optional): Enum specifying frame for commands. Defaults to Frame.LOCAL_NED.
         """
         raise NotImplementedError
 
-    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Waypoint.LOCAL_NED):
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.LOCAL_NED):
         """Sends a velocity command to the vehicle in a specified frame.
 
         Args:
@@ -128,7 +133,7 @@ class AVehicle(Node):
             vy (float): y velocity (m/s)
             vz (float): z velocity (m/s)
             yaw_rate (float): yaw rate (rad/s)
-            frame (int, optional): Enum specifying frame for commands. Defaults to Waypoint.LOCAL_NED.
+            frame (int, optional): Enum specifying frame for commands. Defaults to Frame.LOCAL_NED.
         """
         raise NotImplementedError
 
@@ -238,7 +243,7 @@ class AVehicle(Node):
         """Callback for receiving velocity commands to send to vehicle."""
         v = msg.linear
         yaw_rate = msg.angular.z
-        self.send_velocity(v.x, v.y, v.z, yaw_rate, Waypoint.LOCAL_NED)
+        self.send_velocity(v.x, v.y, v.z, yaw_rate, Frame.BODY_NED)
 
     ########################
     ## Publishers
