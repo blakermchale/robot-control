@@ -25,6 +25,8 @@ import os
 import jinja2
 import xacro
 from enum import IntEnum
+import yaml
+import re
 
 from airsim_utils.generate_settings import create_settings
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
@@ -32,6 +34,13 @@ from airsim_utils.run_environment import run_environment
 
 # Get relative package directories
 robot_control = get_package_share_directory("robot_control")
+
+
+# API's and the simulators they work with
+API_PAIRS = {
+    "mavros": ["airsim", "gazebo", "none"],
+    "none": ["airsim"]
+}
 
 
 class VehicleType(IntEnum):
@@ -46,6 +55,11 @@ class SimType(IntEnum):
     AIRSIM = 2
 
 
+class ApiType(IntEnum):
+    NONE = 0
+    MAVROS = 1
+
+
 def generate_launch_description():   
     launch_description = []
     launch_description += get_launch_arguments()
@@ -53,72 +67,88 @@ def generate_launch_description():
     return LaunchDescription(launch_description)
 
 
+# Arguments with relevant info, type defaults to string
+LAUNCH_ARGS = [
+    {"name": "gui",             "default": "true",              "description": "Starts gazebo gui"},
+    {"name": "verbose",         "default": "false",             "description": "Starts gazebo server with verbose outputs"},
+    {"name": "world",           "default": "empty.world",       "description": "Gazebo world to load"},
+    {"name": "environment",     "default": "",                  "description": "Path to executable for running AirSim environment."},
+    {"name": "nb",              "default": "1",                 "description": "Number of vehicles to spawn.",
+        "type": "int"},
+    {"name": "base_name",       "default": "",                  "description": "Prefix for all vehicles."},
+    {"name": "log_level",       "default": "debug",             "description": "Sets log level of ros nodes."},
+    {"name": "sim",             "default": "gazebo",            "description": "Simulation to use.",
+        "choices": [e.name.lower() for e in SimType]},
+    {"name": "vehicle_type",    "default": "drone",             "description": "Type of vehicle to spawn.",
+        "choices": [e.name.lower() for e in VehicleType]},
+    {"name": "api",             "default": "none",               "description": "API to use.",
+        "choices": [e.name.lower() for e in ApiType]},
+    {"name": "hitl",            "default": "false",             "description": "Flag to enable HITL.",
+        "type": "bool"}
+]
 def get_launch_arguments():
-    return [
-        DeclareLaunchArgument(
-            'gui',
-            default_value='true',
-            description='Starts gazebo gui',
-        ),
-        DeclareLaunchArgument(
-            'verbose',
-            default_value='false',
-            description='Starts gazebo server with verbose outputs',
-        ),
-        DeclareLaunchArgument(
-            'world',
-            default_value="franklin_park.world",
-            description='Starts gazebo server with world file',
-        ),
-        DeclareLaunchArgument(
-            'nb',
-            default_value="1",
-            description='Number of vehicles to spawn.',
-        ),
-        DeclareLaunchArgument(
-            'base_name',
-            default_value="",
-            description='Prefix for all vehicles.',
-        ),
-        DeclareLaunchArgument(
-            'log_level',
-            default_value='debug',
-            description='Sets log level of ros nodes.',
-        ),
-        DeclareLaunchArgument(
-            'sim',
-            default_value="AIRSIM",
-            choices=[e.name for e in SimType],
-            description="Whether or not to start gazebo with this script"
-        ),
-        DeclareLaunchArgument(
-            'vehicle_type',
-            default_value="drone",
-            description="Type of vehicle to spawn."
-        ),
-        DeclareLaunchArgument("fsw", default_value="PX4", description="Whether to use PX4")
-    ]
+    return [DeclareLaunchArgument(param['name'], default_value=param['default'], description=param['description'], choices=param.get("choices")) for param in LAUNCH_ARGS]
+
+
+def convert_type(value, atype):
+    """Converts string using type identifier."""
+    if atype == "int": return int(value)
+    elif atype == "bool": return value == "true"
+    else: return value
+
+
+def get_local_arguments(context):
+    """Stores launch arguments in dictionary using RCL context."""
+    return {param["name"]: convert_type(LaunchConfiguration(param["name"]).perform(context), param.get("type")) for param in LAUNCH_ARGS}
 
 
 def launch_setup(context, *args, **kwargs):
     """Allows declaration of launch arguments within the ROS2 context
     """
-    nb = int(LaunchConfiguration('nb').perform(context))
-    log_level = LaunchConfiguration('log_level').perform(context)
-    base_name = LaunchConfiguration('base_name').perform(context)
-    vehicle_type = LaunchConfiguration('vehicle_type').perform(context)
-    sim = LaunchConfiguration('sim').perform(context)
-    hitl = False  # TODO: implement hitl arg
+    args = get_local_arguments(context)
 
     # Check for empty variables
-    if not os.environ["PX4_AUTOPILOT"]:
+    if not os.environ.get("PX4_AUTOPILOT"):
         raise Exception("PX4_AUTOPILOT env variable must be set")
 
+    ld = []
+
+    # Check for config file
+    if os.environ.get("ROBOT_CONTROL_CONFIG"):
+        # Yaml parsing with env variables
+        # https://stackoverflow.com/questions/52412297/how-to-replace-environment-variable-value-in-yaml-file-to-be-parsed-using-python
+        path_matcher = re.compile(r'\$\{([^}^{]+)\}')
+        def path_constructor(loader, node):
+            """Extract the matched value, expand env variable, and replace the match."""
+            value = node.value
+            match = path_matcher.match(value)
+            env_var = match.group()[2:-1]
+            return os.environ.get(env_var) + value[match.end():]
+        yaml.add_implicit_resolver('!path', path_matcher)
+        yaml.add_constructor('!path', path_constructor)
+
+        ld.append(
+            LogInfo(msg=[
+                'Launching using `ROBOT_CONTROL_CONFIG` file instead of passed in arguments.'
+            ])
+        )
+        with open(os.environ["ROBOT_CONTROL_CONFIG"], 'r') as f:
+            config_vals = yaml.load(f, Loader=yaml.FullLoader)
+        # Overrides passed launch args with config files
+        for k, v in config_vals.items():
+            args[k] = v  #TODO: make sure this is the proper type
+
+    if args["api"] not in API_PAIRS.keys():
+        raise Exception(f"API '{args['api']}' must be specified in API_PAIRS")
+    if args["sim"] not in API_PAIRS[args["api"]]:
+        raise Exception(f"API '{args['api']}' does not work with simulation '{args['sim']}'")
+
     # Choose base name according to vehicle type
-    if base_name == "":
-        base_name = vehicle_type
-    vehicle_type = VehicleType[vehicle_type.upper()]
-    sim = SimType[sim.upper()]
+    if args['base_name'] == "":
+        args["base_name"] = args['vehicle_type']
+    vehicle_type = VehicleType[args['vehicle_type'].upper()]
+    sim = SimType[args['sim'].upper()]
+    api = ApiType[args["api"].upper()]
 
     if vehicle_type == VehicleType.DRONE:
         model = "iris"
@@ -134,7 +164,6 @@ def launch_setup(context, *args, **kwargs):
     else:
         raise Exception("Vehicle type needs to be specified")
 
-    ld = []
     # Start simulator
     if sim == SimType.GAZEBO:
         ld.append(
@@ -144,86 +173,81 @@ def launch_setup(context, *args, **kwargs):
                         os.path.sep, 'gazebo.launch.py']
                 ),
                 launch_arguments={
-                    'verbose': LaunchConfiguration('verbose'),
-                    'gui': LaunchConfiguration('gui'),
+                    'verbose':args['verbose'],
+                    'gui': args['gui'],
+                    'world': args['world']
                 }.items(),
             )
         )
         vehicle_exe = f"mavros_{vehicle_exe}"
+        # Spawn Vehicles
+        for i in range(args["nb"]):
+            namespace = f"{base_name}_{i}"
+            # TODO: Figure out how to use multiple vehicles with HITL?
+            ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
+                                   mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type)
     elif sim == SimType.AIRSIM:
-        environment = r"D:\git\external\AirSim\Unreal\Environments\Blocks426\output\Blocks\run.bat"  # TODO: don't hardcode
         # Generate settings
-        if hitl:
+        if args["hitl"]:
             # FIXME: issue with using custom LLA during HITL, just use default
-            create_settings(nb=nb, pawn_bp="Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'",
-                            hitl=hitl)
+            create_settings(nb=args['nb'], pawn_bp="Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'",
+                            hitl=args['hitl'])
         else:
-            create_settings(nb=nb, pawn_bp="Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'",
-                            lat=42.3097, lon=-71.0959, alt=141.0, hitl=hitl, vehicle_type=AirSimVehicleType.SimpleFlight)
+            create_settings(nb=args['nb'], pawn_bp="Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'",
+                            lat=42.3097, lon=-71.0959, alt=141.0, hitl=args["hitl"], vehicle_type=AirSimVehicleType.SIMPLEFLIGHT)
             os.environ["PX4_SIM_HOST_ADDR"] = os.environ["WSL_HOST_IP"]
-        run_env = run_environment(env=environment)
+        if not args["environment"]:
+            raise Exception(f"AirSim environment must be valid not '{args['environment']}'")
+        run_env = run_environment(env=args["environment"])
         if not run_env:
             return ld
         vehicle_exe = f"airsim_{vehicle_exe}"
 
-    # instance = 0
-    # build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl"
-    # log_directory = f"{build_path}/instance_0"
-    # namespace = "drone_0"
-    # ld.append(
-    #     launch_ros.actions.Node(
-    #         package='px4_computing', executable="sitl",
-    #         output='screen',
-    #         namespace=namespace,
-    #         arguments=[
-    #             "--log-level", log_level,
-    #             "--instance", str(instance)
-    #         ],
-    #     ),
-    # )
-
-    namespace = "drone_0"  # TODO: don't hardcode
-    instance = 0  # TODO: don't hardcode
-    # spawn_vehicle(ld, build_path=build_path, log_directory=log_directory)
-    # TODO: re-enable
-    # Launch basic_drone file that starts all topics, services, and actions to control drone through ROS
-    # ld.append(
-    #     launch_ros.actions.Node(
-    #         package='robot_control', executable=vehicle_exe,
-    #         output='screen',
-    #         namespace=namespace,
-    #         arguments=[
-    #             "--log-level", log_level,
-    #             "--instance", str(instance)
-    #         ],
-    #     ),
-    # )
-
-    # Spawn Vehicles
-    # for i in range(nb):
-    #     log_directory = f"{build_path}/instance_{i}"
-    #     namespace = f"{base_name}_{i}"
-    #     # TODO: Figure out how to use multiple vehicles with HITL?
-    #     spawn_vehicle(ld, namespace=namespace, instance=i, log_directory=log_directory,
-    #                   mavlink_tcp_port=4560+i, mavlink_udp_port=14560+i, log_level=log_level,
-    #                   hil_mode=hil_mode, serial_device=serial_device, gazebo=gazebo, 
-    #                   darknet=darknet,vehicle_type=vehicle_type)
-
+    for i in range(args["nb"]):
+        namespace = f"{args['base_name']}_{i}"
+        if api == ApiType.MAVROS:
+            build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl"
+            ld.append(
+                launch_ros.actions.Node(
+                    package='robot_control', executable="sitl",
+                    output='screen',
+                    namespace=namespace,
+                    arguments=[
+                        "--log-level", args["log_level"],
+                        "--instance", str(i),
+                        "--build-path", build_path,
+                    ],
+                ),
+            )
+            raise NotImplementedError("MAVROS api not implemented yet")
+        elif api == ApiType.NONE:
+            pass
+        else:
+            raise Exception(f"API {api.name} not supported yet")
+        # Launch vehicle executable that creates common ROS2 API
+        ld.append(
+            launch_ros.actions.Node(
+                package='robot_control', executable=vehicle_exe,
+                output='screen',
+                namespace=namespace,
+                arguments=[
+                    "--log-level", args["log_level"],
+                    "--instance", str(i)
+                ],
+            ),
+        )
     return ld
 
 
-def spawn_vehicle(launch_description, namespace="drone_0", instance=0, log_directory=f"{os.environ['HOME']}/logs",
-                  mavlink_tcp_port=4560, mavlink_udp_port=14560, log_level=None,
-                  hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE):
-    """Spawns vehicle in running gazebo world with PX4 SITL, micrortps agent and client, and basic_vehicle.
+def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
+                     hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE):
+    """Spawns vehicle in running gazebo world.
 
     Args:
-        launch_description (list): Launch description list to append nodes and other launch files to.
         namespace (str, optional): ROS namespace for all nodes. Defaults to "drone_0".
         instance (int, optional): Instance of PX4 SITL to start. Defaults to 0.
         mavlink_tcp_port (int, optional): TCP port to use with mavlink. Defaults to 4560.
         mavlink_udp_port (int, optional): UDP port to use with mavlink. Defaults to 14560.
-        log_level (str, optional): Log level to start nodes at in ROS. Nodes must have an implemented way to take this value. Defaults to None.
         hil_mode (bool, optional): Flag that turns on HITL mode. Defaults to False.
         serial_device (str, optional): Path to PX4 serial device port. Defaults to "/dev/ttyACM0".
     """
@@ -238,13 +262,10 @@ def spawn_vehicle(launch_description, namespace="drone_0", instance=0, log_direc
                 "hil_mode": "1" if hil_mode else "0"}
     if vehicle_type == VehicleType.DRONE:
         file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/iris/iris.sdf.jinja'
-        vehicle_exe = 'drone'
     elif vehicle_type == VehicleType.ROVER:
         file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/r1_rover/r1_rover.sdf.jinja'
-        vehicle_exe = "rover"
     elif vehicle_type == VehicleType.PLANE:
         file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/plane/plane.sdf.jinja'
-        vehicle_exe = "plane"
     else:
         raise Exception("Vehicle type needs to be specified")
 
@@ -274,8 +295,9 @@ def spawn_vehicle(launch_description, namespace="drone_0", instance=0, log_direc
     else:
         tmp_path = file_path
 
+    ld = []
     # Spawns vehicle model using SDF or URDF file
-    launch_description.append(
+    ld.append(
         launch_ros.actions.Node(
             package="gazebo_ros", executable="spawn_entity.py",
             arguments=[
@@ -288,3 +310,4 @@ def spawn_vehicle(launch_description, namespace="drone_0", instance=0, log_direc
             output="screen"
         )
     )
+    return ld

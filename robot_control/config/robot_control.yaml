@@ -1,0 +1,10 @@
+# Example configuration file for `ROBOT_CONTROL_CONFIG`
+log_level: "debug"
+nb: 1
+sim: "airsim"  # gazebo, airsim, none
+# fsw and vehicle_type must be a working pair, none specifies to use the default API of that simulator
+#  some simulators do not have a default API like gazebo
+api: "none"  # none, mavros
+vehicle_type: "drone"
+environment: 'E:\home\unreal\environments\Blocks\run.bat'
+world: "${PX4_AUTOPILOT}/Tools/sitl_gazebo/worlds/baylands.world"

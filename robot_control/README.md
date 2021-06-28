@@ -1,5 +1,8 @@
 # robot_control
 ROS2 python package for controlling vehicles with common API.
+## Setup (Optional)  
+Add environment variable `ROBOT_CONTROL_CONFIG` specifying the path to a config file to load. If
+this is not specified the default settings will be used.  
 ## Run
 Takeoff:  
 ```bash

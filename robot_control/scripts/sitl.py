@@ -5,6 +5,8 @@ from argparse import ArgumentParser, RawDescriptionHelpFormatter
 
 
 def get_arguments():
+    if not os.environ.get("PX4_AUTOPILOT"):
+        raise Exception("PX4_AUTOPILOT environment variable must be set")
     parser = ArgumentParser(prog='sitl',
     formatter_class=RawDescriptionHelpFormatter,
     epilog=textwrap.dedent('''\
@@ -13,6 +15,7 @@ def get_arguments():
     parser.add_argument("-i", "--instance", default=0, type=int, help="Instance of vehicle.")
     parser.add_argument("-m", "--model", default=None, type=str, help="Vehicle model to start.")
     parser.add_argument("-d", "--log-directory", type=str, help="Directory to store log files.")
+    parser.add_argument("-b", "--build-path", default=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl", type=str, help="Path to PX4 build files.")
     args, _ = parser.parse_known_args()
     return args
 
@@ -25,9 +28,7 @@ def main():
     i = args.instance
     model = args.model
     log_directory = args.log_directory
-    if not os.environ["PX4_AUTOPILOT"]:
-        raise Exception("PX4_AUTOPILOT environment variable must be set")
-    build_path = f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_rtps"
+    build_path = args.build_path
 
     # Create folder for storing vehicle data
     os.system(f'[ ! -d "{log_directory}" ] && mkdir -p "{log_directory}"')
