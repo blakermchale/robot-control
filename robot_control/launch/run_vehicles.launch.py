@@ -32,6 +32,7 @@ from airsim_utils.generate_settings import create_settings
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
 from airsim_utils.run_environment import run_environment
 
+
 # Get relative package directories
 robot_control = get_package_share_directory("robot_control")
 
@@ -81,7 +82,7 @@ LAUNCH_ARGS = [
         "choices": [e.name.lower() for e in SimType]},
     {"name": "vehicle_type",    "default": "drone",             "description": "Type of vehicle to spawn.",
         "choices": [e.name.lower() for e in VehicleType]},
-    {"name": "api",             "default": "none",               "description": "API to use.",
+    {"name": "api",             "default": "mavros",            "description": "API to use.",
         "choices": [e.name.lower() for e in ApiType]},
     {"name": "hitl",            "default": "false",             "description": "Flag to enable HITL.",
         "type": "bool"}
@@ -182,7 +183,7 @@ def launch_setup(context, *args, **kwargs):
         vehicle_exe = f"mavros_{vehicle_exe}"
         # Spawn Vehicles
         for i in range(args["nb"]):
-            namespace = f"{base_name}_{i}"
+            namespace = f"{args['base_name']}_{i}"
             # TODO: Figure out how to use multiple vehicles with HITL?
             ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                    mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type)
@@ -206,7 +207,7 @@ def launch_setup(context, *args, **kwargs):
     for i in range(args["nb"]):
         namespace = f"{args['base_name']}_{i}"
         if api == ApiType.MAVROS:
-            build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl"
+            build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default"
             ld.append(
                 launch_ros.actions.Node(
                     package='robot_control', executable="sitl",
@@ -218,6 +219,23 @@ def launch_setup(context, *args, **kwargs):
                         "--build-path", build_path,
                     ],
                 ),
+            )
+            ld.append(
+                launch_ros.actions.Node(
+                    package="mavros", executable="mavros_node",
+                    output="screen",
+                    namespace=f"{namespace}/mavros",
+                    parameters=[{
+                        "fcu_url": "udp://:14540@127.0.0.1:14557",
+                        "gcs_url": "",
+                        "target_system_id": 1,
+                        "target_component_id": 1,
+                        "fcu_protocol": "v2.0",
+                    },
+                    os.path.join(robot_control, "config", "px4_config.yaml"),
+                    os.path.join(robot_control, "config", "px4_pluginlists.yaml")
+                    ]
+                )
             )
             raise NotImplementedError("MAVROS api not implemented yet")
         elif api == ApiType.NONE:

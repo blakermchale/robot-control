@@ -13,9 +13,9 @@ def get_arguments():
         Starts PX4 SITL.
         '''))
     parser.add_argument("-i", "--instance", default=0, type=int, help="Instance of vehicle.")
-    parser.add_argument("-m", "--model", default=None, type=str, help="Vehicle model to start.")
-    parser.add_argument("-d", "--log-directory", type=str, help="Directory to store log files.")
-    parser.add_argument("-b", "--build-path", default=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl", type=str, help="Path to PX4 build files.")
+    parser.add_argument("-m", "--model", default="iris", type=str, help="Vehicle model to start.")
+    parser.add_argument("-d", "--log-directory", default=f"{os.environ['HOME']}/.ros", type=str, help="Directory to store log files.")
+    parser.add_argument("-b", "--build-path", default=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default", type=str, help="Path to PX4 build files.")
     args, _ = parser.parse_known_args()
     return args
 

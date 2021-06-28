@@ -24,7 +24,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'sitl = scripts.sitl:main',
+            'sitl = robot_control.sitl:main',
             'airsim_drone = robot_control.airsim.drone:main',
             'airsim_rover = robot_control.airsim.rover:main',
             'mavros_drone = robot_control.mavros.drone:main',
