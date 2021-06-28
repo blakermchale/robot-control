@@ -1,6 +1,14 @@
 # Airsim
 airsim
 msgpack-rpc-python
+# pybullet
+Pillow
+matplotlib
+cycler
+gym
+pybullet
+stable_baselines3
+ray[rllib]
 # General
 numpy
 scipy
