@@ -4,6 +4,7 @@ import numpy as np
 import os
 
 from airsim.types import RotorStates
+from msgpackrpc.future import Future
 
 class MyMultirotorClient(MultirotorClient):
     """
@@ -23,11 +24,11 @@ class MyMultirotorClient(MultirotorClient):
     ########################
     ## Commands
     ########################
-    def land(self):
+    def land(self) -> Future:
         """Asynchronously tells vehicle to land."""
         return self.landAsync(vehicle_name=self._vehicle_name)
 
-    def takeoff(self, altitude: float):
+    def takeoff(self, altitude: float) -> Future:
         """Asynchronously tells vehicle to takeoff."""
         # return self.takeoffAsync(vehicle_name=self._vehicle_name)  # it seems like drone actually only goes 1.5 m up instead of 3.0 m
         return self.moveToZAsync(altitude, 3.0, vehicle_name=self._vehicle_name)
@@ -48,7 +49,7 @@ class MyMultirotorClient(MultirotorClient):
         """
         return self.armDisarm(False, vehicle_name=self._vehicle_name)
 
-    def move_position(self, x: float, y: float, z: float, heading: float):
+    def move_position(self, x: float, y: float, z: float, heading: float) -> Future:
         """Moves to position and heading.
 
         Args:
@@ -60,7 +61,7 @@ class MyMultirotorClient(MultirotorClient):
         yaw_mode = YawMode(is_rate=False, yaw_or_rate=np.rad2deg(heading))
         return self.moveToPositionAsync(x, y, z, 3.0, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
 
-    def move_local_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
+    def move_local_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float) -> Future:
         """Moves by velocity in world NED frame.
 
         Args:
@@ -73,7 +74,7 @@ class MyMultirotorClient(MultirotorClient):
         yaw_mode = YawMode(is_rate=True, yaw_or_rate=np.rad2deg(yaw_rate))
         return self.moveByVelocityAsync(vx, vy, vz, 0.1, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
     
-    def move_body_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float):
+    def move_body_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float) -> Future:
         """Moves by velocity in body NED frame.
 
         Args:
@@ -95,8 +96,10 @@ class MyMultirotorClient(MultirotorClient):
         Returns:
             bool: Whether the vehicle has landed
         """
+        # FIXME: Landed state is not set automatically because of bug https://github.com/microsoft/AirSim/issues/1776
         state = self._state.landed_state
         return state == LandedState.Landed
+        # return self._state.collision.has_collided
 
     ########################
     ## Get states

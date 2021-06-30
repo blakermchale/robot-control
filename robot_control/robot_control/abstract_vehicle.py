@@ -37,6 +37,7 @@ class AVehicle(Node):
         self._position = np.asfarray([np.nan, np.nan, np.nan])
         self._orientation = np.asfarray([np.nan, np.nan, np.nan, np.nan])
         self._target_position = np.asfarray([np.nan, np.nan, np.nan])
+        self._wait_moved = Duration(seconds=5)
 
         # Setup loop
         timer_period = 1/20  # seconds
@@ -63,7 +64,7 @@ class AVehicle(Node):
 
         # ROS parameters
         self.declare_parameter('tolerance_location', 0.7)
-        print("AVehicle")
+        self.get_logger().info("AVehicle initialized")
 
     def update(self):
         """Main loop for performing vehicle checks and updates.
@@ -162,6 +163,20 @@ class AVehicle(Node):
             tolerance = self.get_parameter('tolerance_location').value
         return tolerance >= (self.distance_to_target() if distance is None else distance)
 
+    def has_moved(self, init_position: np.ndarray):
+        """Determines if vehicle has moved significantly.
+
+        Args:
+            init_position (np.ndarray): Initial position of vehicle to compare against.
+
+        Returns:
+            bool: Whether the vehicle has moved from its initial position.
+        """
+        dist = np.linalg.norm(self._position - init_position)
+        tolerance = self.get_parameter('tolerance_location').value
+        # self.get_logger().debug(f"Checking moved from {init_position}, dist: {dist} m", throttle_duration_sec=1.0)
+        return dist > tolerance
+
     def is_armed(self):
         """Checks if vehicle's motors are armed.
 
@@ -181,10 +196,16 @@ class AVehicle(Node):
         position = goal.request.waypoint.position
         heading = goal.request.waypoint.heading
         frame = goal.request.waypoint.frame
+        self.get_logger().debug(f"GoWaypoint: sending x: {position.x}, y: {position.y}, z: {position.z}, heading: {heading}, frame: {frame}")
         self.send_waypoint(position.x, position.y, position.z, heading, frame)
         feedback_msg = GoWaypoint.Feedback()
+        start_time = self.get_clock().now()
+        init_position = self._position
         while True:
-            self._check_rate.sleep()
+            if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
+                self.get_logger().error("GoWaypoint: hasn't moved aborting")
+                goal.abort()
+                return GoWaypoint.Result()
             distance = self.distance_to_target()    
             reached = self.reached_target(distance=distance)     
             if distance is not None:  # publish feedback
@@ -197,6 +218,7 @@ class AVehicle(Node):
                 self.get_logger().info("GoWaypoint: reached destination")
                 goal.succeed()  #handle success
                 return GoWaypoint.Result()
+            self._check_rate.sleep()
 
     def _precheck_go_waypoint_goal(self):
         """Performs prechecks to see if vehicle can go to waypoint."""
@@ -223,16 +245,19 @@ class AVehicle(Node):
     ########################
     def _handle_arm(self, req, res):
         """Callback for arming vehicle."""
+        self.get_logger().debug("Arm service called.")
         res.success = self.arm()
         return res
 
     def _handle_disarm(self, req, res):
         """Callback for disarming vehicle."""
+        self.get_logger().debug("Disarm service called.")
         res.success = self.disarm()
         return res
 
     def _handle_kill(self, req, res):
         """Callback for killing vehicle."""
+        self.get_logger().debug("Kill service called.")
         res.success = self.kill()
         return res
 

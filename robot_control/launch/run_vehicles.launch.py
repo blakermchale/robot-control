@@ -8,7 +8,6 @@ simulation.
 '''
 
 
-from launch import launch_description
 import launch_ros
 from launch import LaunchDescription
 from launch.actions import OpaqueFunction, DeclareLaunchArgument
@@ -28,7 +27,7 @@ from enum import IntEnum
 import yaml
 import re
 
-from airsim_utils.generate_settings import create_settings
+from airsim_utils.generate_settings import create_settings, DEFAULT_PAWN_BP
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
 from airsim_utils.run_environment import run_environment
 
@@ -74,6 +73,7 @@ LAUNCH_ARGS = [
     {"name": "verbose",         "default": "false",             "description": "Starts gazebo server with verbose outputs"},
     {"name": "world",           "default": "empty.world",       "description": "Gazebo world to load"},
     {"name": "environment",     "default": "",                  "description": "Path to executable for running AirSim environment."},
+    {"name": "pawn_bp",         "default": DEFAULT_PAWN_BP,     "description": "Pawn blueprint to spawn in AirSim."},
     {"name": "nb",              "default": "1",                 "description": "Number of vehicles to spawn.",
         "type": "int"},
     {"name": "base_name",       "default": "",                  "description": "Prefix for all vehicles."},
@@ -191,17 +191,23 @@ def launch_setup(context, *args, **kwargs):
         # Generate settings
         if args["hitl"]:
             # FIXME: issue with using custom LLA during HITL, just use default
-            create_settings(nb=args['nb'], pawn_bp="Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'",
+            create_settings(nb=args['nb'], pawn_bp=args["pawn_bp"],
                             hitl=args['hitl'])
         else:
-            create_settings(nb=args['nb'], pawn_bp="Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'",
+            create_settings(nb=args['nb'], pawn_bp=args["pawn_bp"],
                             lat=42.3097, lon=-71.0959, alt=141.0, hitl=args["hitl"], vehicle_type=AirSimVehicleType.SIMPLEFLIGHT)
             os.environ["PX4_SIM_HOST_ADDR"] = os.environ["WSL_HOST_IP"]
         if not args["environment"]:
             raise Exception(f"AirSim environment must be valid not '{args['environment']}'")
         run_env = run_environment(env=args["environment"])
-        if not run_env:
-            return ld
+        # FIXME: resolve run_env flag always being false
+        # if not run_env:
+        #     ld.append(
+        #         LogInfo(msg=[
+        #             'Exiting early because run environment failed.'
+        #         ])
+        #     )
+        #     return ld
         vehicle_exe = f"airsim_{vehicle_exe}"
 
     for i in range(args["nb"]):
