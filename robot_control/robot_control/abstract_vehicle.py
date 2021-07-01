@@ -26,6 +26,29 @@ class Frame(IntEnum):
     BODY_NED = Waypoint.BODY_NED
 
 
+# Useful for identifying reference axis or planes
+class Axis(IntEnum):
+    X = 0
+    Y = 1
+    Z = 2
+    XY = 3
+    XZ = 4
+    YZ = 5
+    XYZ = 6
+
+
+# Convert enum to mask
+AXIS_TO_MASK = {
+    Axis.X: [1, 0, 0],
+    Axis.Y: [0, 1, 0],
+    Axis.Z: [0, 0, 1],
+    Axis.XY: [1, 1, 0],
+    Axis.XZ: [1, 0, 1],
+    Axis.YZ: [0, 1, 1],
+    Axis.XYZ: [1, 1, 1],
+}
+
+
 class AVehicle(Node):
     def __init__(self, log_level="info", instance=0):
         super().__init__('vehicle') # start node
@@ -163,16 +186,20 @@ class AVehicle(Node):
             tolerance = self.get_parameter('tolerance_location').value
         return tolerance >= (self.distance_to_target() if distance is None else distance)
 
-    def has_moved(self, init_position: np.ndarray):
+    def has_moved(self, init_position: np.ndarray, axis: Axis = Axis.XYZ):
         """Determines if vehicle has moved significantly.
 
         Args:
             init_position (np.ndarray): Initial position of vehicle to compare against.
+            axis (Axis, optional): Enum representing axis to compare movement against. Defaults to Axis.XYZ
 
         Returns:
             bool: Whether the vehicle has moved from its initial position.
         """
-        dist = np.linalg.norm(self._position - init_position)
+        mask = AXIS_TO_MASK[axis]
+        position = self._position * mask
+        init_position *= mask
+        dist = np.linalg.norm(position - init_position)
         tolerance = self.get_parameter('tolerance_location').value
         # self.get_logger().debug(f"Checking moved from {init_position}, dist: {dist} m", throttle_duration_sec=1.0)
         return dist > tolerance

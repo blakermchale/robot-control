@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # This package
-from robot_control import Frame
+from robot_control import Frame, Axis
 from robot_control.abstract_drone import ADrone
 from robot_control.airsim.vehicle import Vehicle
 from robot_control.airsim.my_multirotor_client import MyMultirotorClient
@@ -63,7 +63,7 @@ class Drone(ADrone, Vehicle):
         init_pos = self._position
         land_count = 0
         max_lands = 5
-        while not self.has_moved(init_pos):
+        while not self.has_moved(init_pos, Axis.Z):
             init_pos = self._position
             self.get_logger().debug(f"calling async #{land_count}")
             future = client.land()
