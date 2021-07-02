@@ -8,4 +8,4 @@ api: "none"  # none, mavros
 vehicle_type: "drone"
 environment: 'E:\home\unreal\environments\Blocks\run.bat'
 # pawn_bp: "Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'"
-world: "${PX4_AUTOPILOT}/Tools/sitl_gazebo/worlds/baylands.world"
+world: "$(env PX4_AUTOPILOT)/Tools/sitl_gazebo/worlds/baylands.world"

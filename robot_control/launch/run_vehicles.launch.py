@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 '''
-start_vehicles.launch.py
+run_vehicles.launch.py
 
-Starts specified number of vehicles in simulation with ardupilot connection and
-basic_drone control system. If is_sim is set to false it will not start the
-simulation.
+Starts specified number of vehicles in simulation.
 '''
 
-
-import launch_ros
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterFile
 from launch import LaunchDescription
 from launch.actions import OpaqueFunction, DeclareLaunchArgument
 from launch import LaunchDescription
@@ -116,24 +114,16 @@ def launch_setup(context, *args, **kwargs):
 
     # Check for config file
     if os.environ.get("ROBOT_CONTROL_CONFIG"):
-        # Yaml parsing with env variables
-        # https://stackoverflow.com/questions/52412297/how-to-replace-environment-variable-value-in-yaml-file-to-be-parsed-using-python
-        path_matcher = re.compile(r'\$\{([^}^{]+)\}')
-        def path_constructor(loader, node):
-            """Extract the matched value, expand env variable, and replace the match."""
-            value = node.value
-            match = path_matcher.match(value)
-            env_var = match.group()[2:-1]
-            return os.environ.get(env_var) + value[match.end():]
-        yaml.add_implicit_resolver('!path', path_matcher)
-        yaml.add_constructor('!path', path_constructor)
-
         ld.append(
             LogInfo(msg=[
                 'Launching using `ROBOT_CONTROL_CONFIG` file instead of passed in arguments.'
             ])
         )
-        with open(os.environ["ROBOT_CONTROL_CONFIG"], 'r') as f:
+        param_file = ParameterFile(
+            param_file=os.environ["ROBOT_CONTROL_CONFIG"],
+            allow_substs=True)
+        param_file_path = param_file.evaluate(context)
+        with open(param_file_path, 'r') as f:
             config_vals = yaml.load(f, Loader=yaml.FullLoader)
         # Overrides passed launch args with config files
         for k, v in config_vals.items():
@@ -215,7 +205,7 @@ def launch_setup(context, *args, **kwargs):
         if api == ApiType.MAVROS:
             build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default"
             ld.append(
-                launch_ros.actions.Node(
+                Node(
                     package='robot_control', executable="sitl",
                     output='screen',
                     namespace=namespace,
@@ -227,36 +217,38 @@ def launch_setup(context, *args, **kwargs):
                 ),
             )
             ld.append(
-                launch_ros.actions.Node(
+                Node(
                     package="mavros", executable="mavros_node",
                     output="screen",
                     namespace=f"{namespace}/mavros",
+                    # FIXME: parameters sometimes cause crash
                     parameters=[{
-                        "fcu_url": "udp://:14540@127.0.0.1:14557",
-                        "gcs_url": "",
-                        "target_system_id": 1,
-                        "target_component_id": 1,
-                        "fcu_protocol": "v2.0",
-                    },
-                    os.path.join(robot_control, "config", "px4_config.yaml"),
-                    os.path.join(robot_control, "config", "px4_pluginlists.yaml")
+                            "fcu_url": "udp://:14540@127.0.0.1:14557",
+                            "gcs_url": "",
+                            "target_system_id": 1,
+                            "target_component_id": 1,
+                            "fcu_protocol": "v2.0",
+                        },
+                        os.path.join(robot_control, "config", "px4_config.yaml"),
+                        os.path.join(robot_control, "config", "px4_pluginlists.yaml")
                     ]
                 )
             )
-            raise NotImplementedError("MAVROS api not implemented yet")
+            # raise NotImplementedError("MAVROS api not implemented yet")
         elif api == ApiType.NONE:
             pass
         else:
             raise Exception(f"API {api.name} not supported yet")
         # Launch vehicle executable that creates common ROS2 API
         ld.append(
-            launch_ros.actions.Node(
+            Node(
                 package='robot_control', executable=vehicle_exe,
                 output='screen',
                 namespace=namespace,
                 arguments=[
                     "--log-level", args["log_level"],
-                    "--instance", str(i)
+                    "--instance", str(i),
+                    # "--ros-args", "--log-level", f"/{namespace}/vehicle:=DEBUG"
                 ],
             ),
         )
@@ -322,7 +314,7 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
     ld = []
     # Spawns vehicle model using SDF or URDF file
     ld.append(
-        launch_ros.actions.Node(
+        Node(
             package="gazebo_ros", executable="spawn_entity.py",
             arguments=[
                 "-entity", namespace, "-file", tmp_path,
