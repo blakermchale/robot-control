@@ -18,8 +18,8 @@ from argparse import ArgumentParser
 
 # FIXME: a new client has to be instantiated for each call to drone to prevent exception https://github.com/microsoft/AirSim/issues/2607
 class Drone(ADrone, Vehicle):
-    def __init__(self, log_level="info", instance=0):
-        super().__init__(log_level=log_level, instance=instance)
+    def __init__(self, instance=0):
+        super().__init__(instance=instance)
         self._client = MyMultirotorClient(self.namespace)
         self._pub_airsim_multirotor_state = self.create_publisher(MultirotorState, "airsim/multirotor_state", 10)
         # FIXME: temporary fix using join method to find when land finishes
@@ -135,11 +135,10 @@ def main(args=None):
     rclpy.init(args=args)
     # Setup argument parsing
     parser = ArgumentParser()
-    parser.add_argument("--log-level", default='info', choices=["info", "debug", "warn", "error", "fatal"], help='ros log level')
     parser.add_argument("-i", "--instance", default=0, type=int, help="Instance of vehicle.")
     args, _ = parser.parse_known_args()
     # Spin drone
-    drone = Drone(log_level=args.log_level, instance=args.instance)
+    drone = Drone(instance=args.instance)
     executor = MultiThreadedExecutor()
     rclpy.spin(drone, executor=executor)
 

@@ -3,7 +3,6 @@
 import rclpy
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.qos import QoSProfile
-from rclpy.logging import get_logging_severity_from_string
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.clock import Duration
@@ -50,10 +49,8 @@ AXIS_TO_MASK = {
 
 
 class AVehicle(Node):
-    def __init__(self, log_level="info", instance=0):
+    def __init__(self, instance=0):
         super().__init__('vehicle') # start node
-        if log_level is not None:
-            self.get_logger().set_level(get_logging_severity_from_string(log_level))
         self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
         self.namespace = self.get_namespace().split("/")[-1]

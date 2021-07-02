@@ -155,6 +155,9 @@ def launch_setup(context, *args, **kwargs):
     else:
         raise Exception("Vehicle type needs to be specified")
 
+    # Establish log level
+    log_level = args["log_level"].upper()
+
     # Start simulator
     if sim == SimType.GAZEBO:
         ld.append(
@@ -210,7 +213,6 @@ def launch_setup(context, *args, **kwargs):
                     output='screen',
                     namespace=namespace,
                     arguments=[
-                        "--log-level", args["log_level"],
                         "--instance", str(i),
                         "--build-path", build_path,
                     ],
@@ -246,9 +248,8 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
                 namespace=namespace,
                 arguments=[
-                    "--log-level", args["log_level"],
                     "--instance", str(i),
-                    # "--ros-args", "--log-level", f"/{namespace}/vehicle:=DEBUG"
+                    "--ros-args", "--log-level", f"{namespace}.vehicle:={log_level}"
                 ],
             ),
         )
