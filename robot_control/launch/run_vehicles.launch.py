@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 '''
-start_vehicles.launch.py
+run_vehicles.launch.py
 
-Starts specified number of vehicles in simulation with ardupilot connection and
-basic_drone control system. If is_sim is set to false it will not start the
-simulation.
+Runs specified number of vehicles in simulation with controller.
 '''
 
 
-import launch_ros
+from launch_ros.actions import Node
 from launch import LaunchDescription
 from launch.actions import OpaqueFunction, DeclareLaunchArgument
 from launch import LaunchDescription
@@ -215,7 +213,7 @@ def launch_setup(context, *args, **kwargs):
         if api == ApiType.MAVROS:
             build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default"
             ld.append(
-                launch_ros.actions.Node(
+                Node(
                     package='robot_control', executable="sitl",
                     output='screen',
                     namespace=namespace,
@@ -227,7 +225,7 @@ def launch_setup(context, *args, **kwargs):
                 ),
             )
             ld.append(
-                launch_ros.actions.Node(
+                Node(
                     package="mavros", executable="mavros_node",
                     output="screen",
                     namespace=f"{namespace}/mavros",
@@ -250,7 +248,7 @@ def launch_setup(context, *args, **kwargs):
             raise Exception(f"API {api.name} not supported yet")
         # Launch vehicle executable that creates common ROS2 API
         ld.append(
-            launch_ros.actions.Node(
+            Node(
                 package='robot_control', executable=vehicle_exe,
                 output='screen',
                 namespace=namespace,
@@ -322,7 +320,7 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
     ld = []
     # Spawns vehicle model using SDF or URDF file
     ld.append(
-        launch_ros.actions.Node(
+        Node(
             package="gazebo_ros", executable="spawn_entity.py",
             arguments=[
                 "-entity", namespace, "-file", tmp_path,
