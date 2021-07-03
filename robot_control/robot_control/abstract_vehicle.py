@@ -15,7 +15,6 @@ from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from robot_control_interfaces.msg import Waypoint
 # Common libraries
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 from enum import IntEnum
 
 
