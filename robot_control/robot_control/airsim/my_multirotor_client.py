@@ -2,9 +2,9 @@
 from airsim import MultirotorClient, YawMode, DrivetrainType, LandedState, MultirotorState
 import numpy as np
 import os
-
 from airsim.types import RotorStates
 from msgpackrpc.future import Future
+from airsim_utils.generate_settings import EMPTY_NAMESPACE
 
 class MyMultirotorClient(MultirotorClient):
     """
@@ -16,7 +16,8 @@ class MyMultirotorClient(MultirotorClient):
         ip = os.environ["WSL_HOST_IP"]
         super().__init__(ip=ip)
         self.confirmConnection()
-        self._vehicle_name = namespace
+        print(f"ns: {namespace}")
+        self._vehicle_name = namespace if namespace != "" else EMPTY_NAMESPACE
         self.enableApiControl(True, vehicle_name=self._vehicle_name)
         self._state = MultirotorState()
         self._rotor_states = RotorStates()

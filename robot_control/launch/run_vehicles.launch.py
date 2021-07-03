@@ -23,7 +23,7 @@ import jinja2
 import xacro
 from enum import IntEnum
 import yaml
-import re
+import ast
 
 from airsim_utils.generate_settings import create_settings, DEFAULT_PAWN_BP
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
@@ -74,6 +74,8 @@ LAUNCH_ARGS = [
     {"name": "pawn_bp",         "default": DEFAULT_PAWN_BP,     "description": "Pawn blueprint to spawn in AirSim."},
     {"name": "nb",              "default": "1",                 "description": "Number of vehicles to spawn.",
         "type": "int"},
+    {"name": "namespaces",      "default": "[]",                "description": "List of namespaces. Will autofill if number spawned is greater than number of items. Ex: ['drone','rover'].",
+        "type": "list"},
     {"name": "base_name",       "default": "",                  "description": "Prefix for all vehicles."},
     {"name": "log_level",       "default": "debug",             "description": "Sets log level of ros nodes."},
     {"name": "sim",             "default": "gazebo",            "description": "Simulation to use.",
@@ -93,6 +95,7 @@ def convert_type(value, atype):
     """Converts string using type identifier."""
     if atype == "int": return int(value)
     elif atype == "bool": return value == "true"
+    elif atype == "list": return ast.literal_eval(value)
     else: return value
 
 
@@ -158,6 +161,16 @@ def launch_setup(context, *args, **kwargs):
     # Establish log level
     log_level = args["log_level"].upper()
 
+    # Pre-process namespaces
+    namespaces = args["namespaces"]
+    len_ns = len(namespaces)
+    if args["nb"] > len_ns:
+        gen_num = args["nb"] - len_ns  # amount to generate
+        for i in range(gen_num):
+            namespaces.append(f"{args['base_name']}_{len_ns+i}")
+    if len(namespaces) != len(set(namespaces)):
+        raise ValueError("Namespaces list contains duplicates")
+
     # Start simulator
     if sim == SimType.GAZEBO:
         ld.append(
@@ -175,8 +188,7 @@ def launch_setup(context, *args, **kwargs):
         )
         vehicle_exe = f"mavros_{vehicle_exe}"
         # Spawn Vehicles
-        for i in range(args["nb"]):
-            namespace = f"{args['base_name']}_{i}"
+        for i, namespace in enumerate(namespaces):
             # TODO: Figure out how to use multiple vehicles with HITL?
             ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                    mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type)
@@ -188,7 +200,9 @@ def launch_setup(context, *args, **kwargs):
                             hitl=args['hitl'])
         else:
             create_settings(nb=args['nb'], pawn_bp=args["pawn_bp"],
-                            lat=42.3097, lon=-71.0959, alt=141.0, hitl=args["hitl"], vehicle_type=AirSimVehicleType.SIMPLEFLIGHT)
+                            lat=42.3097, lon=-71.0959, alt=141.0, hitl=args["hitl"],
+                            vehicle_type=AirSimVehicleType.SIMPLEFLIGHT,
+                            namespaces=namespaces)
             os.environ["PX4_SIM_HOST_ADDR"] = os.environ["WSL_HOST_IP"]
         if not args["environment"]:
             raise Exception(f"AirSim environment must be valid not '{args['environment']}'")
@@ -203,8 +217,7 @@ def launch_setup(context, *args, **kwargs):
         #     return ld
         vehicle_exe = f"airsim_{vehicle_exe}"
 
-    for i in range(args["nb"]):
-        namespace = f"{args['base_name']}_{i}"
+    for i, namespace in enumerate(namespaces):
         if api == ApiType.MAVROS:
             build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default"
             ld.append(
@@ -242,6 +255,7 @@ def launch_setup(context, *args, **kwargs):
         else:
             raise Exception(f"API {api.name} not supported yet")
         # Launch vehicle executable that creates common ROS2 API
+        node_name = combine_names([namespace, "vehicle"], ".")
         ld.append(
             Node(
                 package='robot_control', executable=vehicle_exe,
@@ -249,7 +263,7 @@ def launch_setup(context, *args, **kwargs):
                 namespace=namespace,
                 arguments=[
                     "--instance", str(i),
-                    "--ros-args", "--log-level", f"{namespace}.vehicle:={log_level}"
+                    "--ros-args", "--log-level", f"{node_name}:={log_level}"
                 ],
             ),
         )
@@ -328,3 +342,8 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
         )
     )
     return ld
+
+
+def combine_names(l: list, sep: str):
+    l = list(filter(None, l))  # Remove empty strings
+    return sep.join(l)

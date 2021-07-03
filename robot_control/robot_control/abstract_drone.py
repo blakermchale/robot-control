@@ -13,15 +13,15 @@ from robot_control_interfaces.action import ArmTakeoff, Land
 
 
 class ADrone(AVehicle):
-    def __init__(self, log_level="info", instance=0):
-        super().__init__(log_level=log_level, instance=instance)
+    def __init__(self, instance=0):
+        super().__init__(instance=instance)
 
         # Actions
         self._server_arm_takeoff = ActionServer(self, ArmTakeoff, "arm_takeoff", self._handle_arm_takeoff_goal,
             cancel_callback=self._handle_arm_takeoff_cancel)
         self._server_land = ActionServer(self, Land, "land", self._handle_land_goal,
             cancel_callback=self._handle_land_cancel)
-        self.get_logger().info("ADrone initialized")
+        self.get_logger().debug("ADrone initialized")
 
     def takeoff(self, alt: float):
         """Takes vehicle off from current location.

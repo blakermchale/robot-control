@@ -84,7 +84,7 @@ class AVehicle(Node):
 
         # ROS parameters
         self.declare_parameter('tolerance_location', 0.7)
-        self.get_logger().info("AVehicle initialized")
+        self.get_logger().debug("AVehicle initialized")
 
     def update(self):
         """Main loop for performing vehicle checks and updates.
