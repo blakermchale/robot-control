@@ -180,6 +180,15 @@ def launch_setup(context, *args, **kwargs):
         #         ])
         #     )
         #     return ld
+        ld.append(
+            Node(
+                package='airsim_ros', executable="airsim_node",
+                output='screen',
+                arguments=[
+                    "--ros-args", "--log-level", f"airsim_ros_wrapper:={log_level}"
+                ],
+            ),
+        )
         vehicle_exe = f"airsim_{vehicle_exe}"
 
     for i, namespace in enumerate(namespaces):
