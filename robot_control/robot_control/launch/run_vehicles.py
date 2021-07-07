@@ -158,28 +158,7 @@ def launch_setup(context, *args, **kwargs):
             ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                    mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type)
     elif sim == SimType.AIRSIM:
-        # Generate settings
-        if args["hitl"]:
-            # FIXME: issue with using custom LLA during HITL, just use default
-            create_settings(nb=args['nb'], pawn_bp=args["pawn_bp"],
-                            hitl=args['hitl'])
-        else:
-            create_settings(nb=args['nb'], pawn_bp=args["pawn_bp"],
-                            lat=42.3097, lon=-71.0959, alt=141.0, hitl=args["hitl"],
-                            vehicle_type=AirSimVehicleType.SIMPLEFLIGHT,
-                            namespaces=namespaces)
-            os.environ["PX4_SIM_HOST_ADDR"] = os.environ["WSL_HOST_IP"]
-        if not args["environment"]:
-            raise Exception(f"AirSim environment must be valid not '{args['environment']}'")
-        run_env = run_environment(env=args["environment"])
-        # FIXME: resolve run_env flag always being false
-        # if not run_env:
-        #     ld.append(
-        #         LogInfo(msg=[
-        #             'Exiting early because run environment failed.'
-        #         ])
-        #     )
-        #     return ld
+        ld += generate_airsim(args["hitl"], args["nb"], args["pawn_bp"], namespaces, args["environment"], log_level)
         ld.append(
             Node(
                 package='airsim_ros', executable="airsim_node",
@@ -315,6 +294,33 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
             output="screen"
         )
     )
+    return ld
+
+
+def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], environment="", log_level="DEBUG"):
+    ld = []
+    # Generate settings
+    if hitl:
+        # FIXME: issue with using custom LLA during HITL, just use default
+        create_settings(nb=nb, pawn_bp=pawn_bp,
+                        hitl=hitl)
+    else:
+        create_settings(nb=nb, pawn_bp=pawn_bp,
+                        lat=42.3097, lon=-71.0959, alt=141.0, hitl=hitl,
+                        vehicle_type=AirSimVehicleType.SIMPLEFLIGHT,
+                        namespaces=namespaces)
+        os.environ["PX4_SIM_HOST_ADDR"] = os.environ["WSL_HOST_IP"]
+    if not environment:
+        raise Exception(f"AirSim environment must be valid not '{environment}'")
+    run_env = run_environment(env=environment)
+    # FIXME: resolve run_env flag always being false
+    # if not run_env:
+    #     ld.append(
+    #         LogInfo(msg=[
+    #             'Exiting early because run environment failed.'
+    #         ])
+    #     )
+    #     return ld
     return ld
 
 
