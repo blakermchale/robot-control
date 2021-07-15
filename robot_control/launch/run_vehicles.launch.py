@@ -2,7 +2,7 @@
 '''
 run_vehicles.launch.py
 
-Starts specified number of vehicles in simulation.
+Runs specified number of vehicles in simulation with controller.
 '''
 from launch import LaunchDescription
 from launch.actions import OpaqueFunction
