@@ -161,3 +161,7 @@ class TestArmTakeoffLand(unittest.TestCase):
             self.assertTrue(self.complete_action_call(executor, future, "land"))
         finally:
             executor.remove_node(self.nh)
+
+
+if __name__ == '__main__':
+    unittest.main()
