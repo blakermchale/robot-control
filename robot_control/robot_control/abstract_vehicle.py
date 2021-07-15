@@ -3,7 +3,6 @@
 import rclpy
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.qos import QoSProfile
-from rclpy.logging import get_logging_severity_from_string
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.clock import Duration
@@ -16,7 +15,6 @@ from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from robot_control_interfaces.msg import Waypoint
 # Common libraries
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 from enum import IntEnum
 
 
@@ -50,10 +48,8 @@ AXIS_TO_MASK = {
 
 
 class AVehicle(Node):
-    def __init__(self, log_level="info", instance=0):
+    def __init__(self, instance=0):
         super().__init__('vehicle') # start node
-        if log_level is not None:
-            self.get_logger().set_level(get_logging_severity_from_string(log_level))
         self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
         self.namespace = self.get_namespace().split("/")[-1]
@@ -87,7 +83,7 @@ class AVehicle(Node):
 
         # ROS parameters
         self.declare_parameter('tolerance_location', 0.7)
-        self.get_logger().info("AVehicle initialized")
+        self.get_logger().debug("AVehicle initialized")
 
     def update(self):
         """Main loop for performing vehicle checks and updates.

@@ -4,6 +4,6 @@ from robot_control.abstract_vehicle import AVehicle
 
 
 class Vehicle(AVehicle):
-    def __init__(self, log_level="info", instance=0):
-        super().__init__(log_level=log_level, instance=instance)
+    def __init__(self, instance=0):
+        super().__init__(instance=instance)
         print("Vehicle")
