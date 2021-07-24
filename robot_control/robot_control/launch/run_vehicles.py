@@ -6,15 +6,15 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 from ament_index_python.packages import get_package_share_directory
 import os
-import jinja2
-import xacro
 from enum import IntEnum
 import yaml
 
 from airsim_utils.generate_settings import create_settings, DEFAULT_PAWN_BP
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
 from airsim_utils.run_environment import run_environment
-from robot_control.launch.common import get_local_arguments
+from robot_control.launch.common import get_local_arguments, parse_model_file, combine_names
+from robot_control.launch.ignition import setup as setup_ignition
+from robot_control.launch.gazebo import setup as setup_gazebo
 
 
 # Get relative package directories
@@ -23,7 +23,7 @@ robot_control = get_package_share_directory("robot_control")
 
 # API's and the simulators they work with
 API_PAIRS = {
-    "mavros": ["airsim", "gazebo", "none"],
+    "mavros": ["airsim", "gazebo", "ignition", "none"],
     "none": ["airsim"]
 }
 
@@ -38,6 +38,7 @@ class SimType(IntEnum):
     NONE = 0
     GAZEBO = 1
     AIRSIM = 2
+    IGNITION = 3
 
 
 class ApiType(IntEnum):
@@ -49,7 +50,8 @@ class ApiType(IntEnum):
 LAUNCH_ARGS = [
     {"name": "gui",             "default": "true",              "description": "Starts gazebo gui"},
     {"name": "verbose",         "default": "false",             "description": "Starts gazebo server with verbose outputs"},
-    {"name": "world",           "default": "empty.world",       "description": "Gazebo world to load"},
+    {"name": "gz_world",        "default": "empty.world",       "description": "Gazebo world to load"},
+    {"name": "ign_world",       "default": "empty.sdf",         "description": "Ignition world to load"},
     {"name": "environment",     "default": "",                  "description": "Path to executable for running AirSim environment."},
     {"name": "pawn_bp",         "default": DEFAULT_PAWN_BP,     "description": "Pawn blueprint to spawn in AirSim."},
     {"name": "nb",              "default": "1",                 "description": "Number of vehicles to spawn.",
@@ -136,8 +138,15 @@ def launch_setup(context, *args, **kwargs):
     if len(namespaces) != len(set(namespaces)):
         raise ValueError("Namespaces list contains duplicates")
 
+    ld.append(
+        LogInfo(msg=[
+            f'Spawning vehicles with namespaces "{", ".join(namespaces)}".'
+        ])
+    )
+
     # Start simulator
     if sim == SimType.GAZEBO:
+        setup_gazebo()
         ld.append(
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -147,7 +156,7 @@ def launch_setup(context, *args, **kwargs):
                 launch_arguments={
                     'verbose':args['verbose'],
                     'gui': args['gui'],
-                    'world': args['world']
+                    'world': args['gz_world']
                 }.items(),
             )
         )
@@ -157,6 +166,27 @@ def launch_setup(context, *args, **kwargs):
             # TODO: Figure out how to use multiple vehicles with HITL?
             ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                    mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type)
+    elif sim == SimType.IGNITION:
+        setup_ignition()
+        ld.append(
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    [robot_control, os.path.sep, 'launch',
+                        os.path.sep, 'ignition.launch.py']
+                ),
+                launch_arguments={
+                    'verbose':args['verbose'],
+                    'gui': args['gui'],
+                    'world': args['ign_world']
+                }.items(),
+            )
+        )
+        vehicle_exe = f"mavros_{vehicle_exe}"
+        # Spawn Vehicles
+        for i, namespace in enumerate(namespaces):
+            # TODO: Figure out how to use multiple vehicles with HITL?
+            ld += spawn_ign_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
+                                    mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type)
     elif sim == SimType.AIRSIM:
         ld += generate_airsim(args["hitl"], args["nb"], args["pawn_bp"], namespaces, args["environment"], log_level)
         ld.append(
@@ -253,31 +283,7 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
     else:
         raise Exception("Vehicle type needs to be specified")
 
-    robot_desc = None
-    if file_path.split('.')[-1] == "xacro":
-        tmp_path = f'/tmp/{namespace}.urdf'
-        doc = xacro.process_file(file_path, mappings=mappings)
-        robot_desc = doc.toprettyxml(indent='  ')
-        tmp_file = open(tmp_path, 'w')
-        tmp_file.write(robot_desc)
-        tmp_file.close()
-    elif file_path.split('.')[-1] == "erb":
-        tmp_path = f'/tmp/{namespace}.sdf'
-        cmd = "erb"
-        for (key, val) in mappings.items():
-            cmd += f" {key}={val}"
-        cmd += f" {file_path} > {tmp_path}"
-        os.system(cmd)
-    elif file_path.split('.')[-1] == "jinja":
-        tmp_path = f'/tmp/{namespace}.sdf'
-        templateFilePath = jinja2.FileSystemLoader(os.path.dirname(file_path))
-        jinja_env = jinja2.Environment(loader=templateFilePath)
-        j_template = jinja_env.get_template(os.path.basename(file_path))
-        output = j_template.render(mappings)
-        with open(tmp_path, 'w') as sdf_file:
-            sdf_file.write(output)
-    else:
-        tmp_path = file_path
+    tmp_path, robot_desc = parse_model_file(file_path, mappings)
 
     ld = []
     # Spawns vehicle model using SDF or URDF file
@@ -288,6 +294,54 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
                 "-entity", namespace, "-file", tmp_path,
                 "-robot_namespace", namespace,
                 "-spawn_service_timeout", "120.0",
+                "-x", str(instance*2), "-y", str(0), "-z", str(0.15),
+                "-R", str(0.0), "-P", str(0.0), "-Y", str(0.0)
+            ],
+            output="screen"
+        )
+    )
+    return ld
+
+
+def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
+                     hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE):
+    """Spawns vehicle in running gazebo world.
+
+    Args:
+        namespace (str, optional): ROS namespace for all nodes. Defaults to "drone_0".
+        instance (int, optional): Instance of PX4 SITL to start. Defaults to 0.
+        mavlink_tcp_port (int, optional): TCP port to use with mavlink. Defaults to 4560.
+        mavlink_udp_port (int, optional): UDP port to use with mavlink. Defaults to 14560.
+        hil_mode (bool, optional): Flag that turns on HITL mode. Defaults to False.
+        serial_device (str, optional): Path to PX4 serial device port. Defaults to "/dev/ttyACM0".
+    """
+    # TODO: URDF still needs to be implemented
+    # Creates tmp URDF file with frog v2
+    mappings = {"namespace": namespace,
+                "mavlink_tcp_port": mavlink_tcp_port,
+                "mavlink_udp_port": mavlink_udp_port,
+                "serial_enabled": "1" if hil_mode else "0",
+                "serial_device": serial_device,
+                "serial_baudrate": "921600",
+                "hil_mode": "1" if hil_mode else "0"}
+    pkg_robot_ignition = get_package_share_directory("robot_ignition")
+    if vehicle_type == VehicleType.DRONE:
+        file_path = f'{pkg_robot_ignition}/models/x3_mavlink/model.sdf.jinja'
+        # file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/simulation-ignition/models/x3/model.sdf'
+        # file_path = f'{os.environ["HOME"]}/.ignition/fuel/fuel.ignitionrobotics.org/openrobotics/models/construction cone/2/model.sdf'
+    else:
+        raise Exception("Vehicle type needs to be specified")
+
+    tmp_path, robot_desc = parse_model_file(file_path, mappings)
+
+    ld = []
+    # Spawns vehicle model using SDF or URDF file
+    ld.append(
+        Node(
+            package="ros_ign_gazebo", executable="create",
+            arguments=[
+                "-file", tmp_path,
+                "-name", namespace,    
                 "-x", str(instance*2), "-y", str(0), "-z", str(0.15),
                 "-R", str(0.0), "-P", str(0.0), "-Y", str(0.0)
             ],
@@ -322,8 +376,3 @@ def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], en
     #     )
     #     return ld
     return ld
-
-
-def combine_names(l: list, sep: str):
-    l = list(filter(None, l))  # Remove empty strings
-    return sep.join(l)
