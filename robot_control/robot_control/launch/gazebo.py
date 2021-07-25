@@ -6,6 +6,7 @@ from launch.substitutions import LaunchConfiguration
 
 from ament_index_python.packages import get_package_share_directory
 import os
+from robot_control.launch.common import combine_names
 
 
 gazebo_ros = get_package_share_directory("gazebo_ros")
@@ -55,3 +56,17 @@ def launch_setup(context, *args, **kwargs):
         )
     )
     return ld
+
+
+def setup():
+    if not os.environ.get("PX4_AUTOPILOT"):
+        raise Exception("PX4_AUTOPILOT env variable must be set")
+    px4_path = os.environ["PX4_AUTOPILOT"]
+    px4_gazebo_path = os.path.join(px4_path, "Tools", "sitl_gazebo")
+    px4_gazebo_build_path = os.path.join(px4_path, "build", "px4_sitl_default", "build_gazebo")
+    ld_libs = [os.environ.get("LD_LIBRARY_PATH"), px4_gazebo_build_path]
+    os.environ["LD_LIBRARY_PATH"] = combine_names(ld_libs, ":")
+    plugins = [os.environ.get("GAZEBO_PLUGIN_PATH"), px4_gazebo_build_path]
+    os.environ["GAZEBO_PLUGIN_PATH"] = combine_names(plugins, ":")
+    models = [os.environ.get("GAZEBO_MODEL_PATH"), os.path.join(px4_gazebo_path, "models")]
+    os.environ["GAZEBO_MODEL_PATH"] = combine_names(models, ":")
