@@ -25,10 +25,12 @@ setup(
     entry_points={
         'console_scripts': [
             'sitl = robot_control.sitl:main',
+            'micrortps_agent = robot_control.micrortps_agent:main',
             'airsim_drone = robot_control.airsim.drone:main',
             'airsim_rover = robot_control.airsim.rover:main',
             'mavros_drone = robot_control.mavros.drone:main',
             'mavros_rover = robot_control.mavros.rover:main',
+            'rtps_drone = robot_control.rtps.drone:main',
         ],
     },
 )

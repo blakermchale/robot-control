@@ -52,7 +52,7 @@ class AVehicle(Node):
         super().__init__('vehicle') # start node
         self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
-        self.namespace = self.get_namespace().split("/")[-1]
+        self._namespace = self.get_namespace().split("/")[-1]
         self._position = np.asfarray([np.nan, np.nan, np.nan])
         self._orientation = np.asfarray([np.nan, np.nan, np.nan, np.nan])
         self._target_position = np.asfarray([np.nan, np.nan, np.nan])

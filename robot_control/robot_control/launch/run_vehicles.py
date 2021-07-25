@@ -23,7 +23,8 @@ robot_control = get_package_share_directory("robot_control")
 
 # API's and the simulators they work with
 API_PAIRS = {
-    "mavros": ["airsim", "gazebo", "none"],
+    "rtps": ["airsim", "gazebo", "ignition", "none"],
+    "mavros": ["airsim", "gazebo", "ignition", "none"],
     "none": ["airsim"]
 }
 
@@ -38,11 +39,13 @@ class SimType(IntEnum):
     NONE = 0
     GAZEBO = 1
     AIRSIM = 2
+    IGNITION = 3
 
 
 class ApiType(IntEnum):
     NONE = 0
     MAVROS = 1
+    RTPS = 2
 
 
 # Arguments with relevant info, type defaults to string
@@ -151,7 +154,6 @@ def launch_setup(context, *args, **kwargs):
                 }.items(),
             )
         )
-        vehicle_exe = f"mavros_{vehicle_exe}"
         # Spawn Vehicles
         for i, namespace in enumerate(namespaces):
             # TODO: Figure out how to use multiple vehicles with HITL?
@@ -171,8 +173,34 @@ def launch_setup(context, *args, **kwargs):
         vehicle_exe = f"airsim_{vehicle_exe}"
 
     for i, namespace in enumerate(namespaces):
-        if api == ApiType.MAVROS:
-            build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default"
+        if api == ApiType.MAVROS or api == ApiType.RTPS:
+            if api == ApiType.RTPS:
+                vehicle_exe = f"rtps_{vehicle_exe}"
+                build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_rtps"
+                model = f"{model}_rtps"
+                ld += generate_api_rtps(namespace, i)
+            elif api == ApiType.MAVROS:
+                vehicle_exe = f"mavros_{vehicle_exe}"
+                build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default"
+                ld.append(
+                    Node(
+                        package="mavros", executable="mavros_node",
+                        output="screen",
+                        namespace=f"{namespace}/mavros",
+                        # FIXME: parameters sometimes cause crash
+                        parameters=[{
+                                "fcu_url": "udp://:14540@127.0.0.1:14557",
+                                "gcs_url": "",
+                                "target_system_id": 1,
+                                "target_component_id": 1,
+                                "fcu_protocol": "v2.0",
+                            },
+                            os.path.join(robot_control, "config", "px4_config.yaml"),
+                            os.path.join(robot_control, "config", "px4_pluginlists.yaml")
+                        ]
+                    )
+                )
+                # raise NotImplementedError("MAVROS api not implemented yet")
             ld.append(
                 Node(
                     package='robot_control', executable="sitl",
@@ -181,28 +209,10 @@ def launch_setup(context, *args, **kwargs):
                     arguments=[
                         "--instance", str(i),
                         "--build-path", build_path,
+                        "--model", model
                     ],
                 ),
             )
-            ld.append(
-                Node(
-                    package="mavros", executable="mavros_node",
-                    output="screen",
-                    namespace=f"{namespace}/mavros",
-                    # FIXME: parameters sometimes cause crash
-                    parameters=[{
-                            "fcu_url": "udp://:14540@127.0.0.1:14557",
-                            "gcs_url": "",
-                            "target_system_id": 1,
-                            "target_component_id": 1,
-                            "fcu_protocol": "v2.0",
-                        },
-                        os.path.join(robot_control, "config", "px4_config.yaml"),
-                        os.path.join(robot_control, "config", "px4_pluginlists.yaml")
-                    ]
-                )
-            )
-            # raise NotImplementedError("MAVROS api not implemented yet")
         elif api == ApiType.NONE:
             pass
         else:
@@ -297,6 +307,9 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
     return ld
 
 
+#######################
+## Sim generation
+#######################
 def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], environment="", log_level="DEBUG"):
     ld = []
     # Generate settings
@@ -322,6 +335,40 @@ def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], en
     #     )
     #     return ld
     return ld
+
+
+def generate_gazebo():
+    pass
+
+
+def generate_ignition():
+    pass
+
+
+####################
+## API Generation
+####################
+def generate_api_rtps(namespace, instance):
+    ld = [
+        Node(
+            package='robot_control', executable="micrortps_agent",
+            output='screen',
+            namespace=namespace,
+            arguments=[
+                "--instance", str(instance),
+                "--namespace", namespace
+            ],
+        ),
+    ]
+    return ld
+
+
+def generate_api_mavros():
+    pass
+
+
+def generate_api_airsim():
+    pass
 
 
 def combine_names(l: list, sep: str):
