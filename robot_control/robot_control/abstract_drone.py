@@ -75,7 +75,7 @@ class ADrone(AVehicle):
         self.get_logger().debug("ArmTakeoff: waiting to reach altitude")
         feedback_msg = ArmTakeoff.Feedback()
         start_time = self.get_clock().now()
-        init_position = self._position
+        init_position = self.position
         while True:
             distance = self.distance_to_target()    
             reached = self.reached_target(distance=distance)        
@@ -123,7 +123,7 @@ class ADrone(AVehicle):
             return Land.Result()
         self.get_logger().debug("Land: waiting")
         start_time = self.get_clock().now()
-        init_position = self._position
+        init_position = self.position
         while True:
             if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
                 self.get_logger().error("Land: hasn't moved aborting")

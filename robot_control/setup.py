@@ -29,6 +29,8 @@ setup(
             'airsim_rover = robot_control.airsim.rover:main',
             'mavros_drone = robot_control.mavros.drone:main',
             'mavros_rover = robot_control.mavros.rover:main',
+            'ignition_drone = robot_control.ignition.drone:main',
+            'ignition_rover = robot_control.ignition.rover:main',
         ],
     },
 )

@@ -20,7 +20,7 @@ from argparse import ArgumentParser
 class Drone(ADrone, Vehicle):
     def __init__(self, instance=0):
         super().__init__(instance=instance)
-        self._client = MyMultirotorClient(self.namespace)
+        self._client = MyMultirotorClient(self._namespace)
         self._pub_airsim_multirotor_state = self.create_publisher(MultirotorState, "airsim/multirotor_state", 10)
         # FIXME: temporary fix using join method to find when land finishes
         self._landed = True
@@ -29,8 +29,8 @@ class Drone(ADrone, Vehicle):
     def update(self):
         self._client.update_state()
         self._client.update_rotor_states()
-        self._position = self._client.get_position()
-        self._orientation = self._client.get_orientation()
+        self.position = self._client.get_position()
+        self.orientation = self._client.get_orientation()
         self._publish_airsim()
         super().update()
 
@@ -38,12 +38,12 @@ class Drone(ADrone, Vehicle):
     ## Control commands
     #####################
     def arm(self):
-        client = MyMultirotorClient(self.namespace)
+        client = MyMultirotorClient(self._namespace)
         return client.arm()
         # return self._client.arm()
     
     def disarm(self):
-        client = MyMultirotorClient(self.namespace)
+        client = MyMultirotorClient(self._namespace)
         result = client.disarm()
         # FIXME: not necessary once landed state is fixed
         if result: self._landed = True
@@ -51,20 +51,20 @@ class Drone(ADrone, Vehicle):
         # return self._client.disarm()
 
     def halt(self):
-        x = self._position[0]
-        y = self._position[1]
-        z = self._position[2]
-        client = MyMultirotorClient(self.namespace)
+        x = self.position.x
+        y = self.position.y
+        z = self.position.z
+        client = MyMultirotorClient(self._namespace)
         client.move_position(x, y, z, 0).join()
         # self._client.move_position(x, y, z, 0).join()  # TODO: use vehicle heading
 
     def land(self):
-        client = MyMultirotorClient(self.namespace)
-        init_pos = self._position
+        client = MyMultirotorClient(self._namespace)
+        init_pos = self.position
         land_count = 0
         max_lands = 5
         while not self.has_moved(init_pos, Axis.Z):
-            init_pos = self._position
+            init_pos = self.position
             self.get_logger().debug(f"calling async #{land_count}")
             future = client.land()
             future.join()
@@ -76,9 +76,9 @@ class Drone(ADrone, Vehicle):
         # self._client.land()
 
     def takeoff(self, alt: float):
-        goal_alt = self._position[2] + -1*alt
-        self.set_target(self._position[0], self._position[1], goal_alt)
-        client = MyMultirotorClient(self.namespace)
+        goal_alt = self.position.z + -1*alt
+        self.set_target(self.position.x, self.position.y, goal_alt)
+        client = MyMultirotorClient(self._namespace)
         client.takeoff(goal_alt)
         return True
         # self._client.takeoff(goal_alt)
@@ -86,7 +86,7 @@ class Drone(ADrone, Vehicle):
     def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int):
         # TODO: handle frame conversions
         self.set_target(x, y, z)
-        client = MyMultirotorClient(self.namespace)
+        client = MyMultirotorClient(self._namespace)
         client.move_position(x, y, z, heading)
         # self._client.move_position(x, y, z, heading)
 
