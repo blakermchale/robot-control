@@ -2,6 +2,7 @@
 import numpy as np
 from enum import IntEnum
 from geometry_msgs.msg import Point, Vector3, Quaternion, Pose, Twist
+from nav_msgs.msg import Odometry
 from robot_control_interfaces.msg import Waypoint
 from scipy.spatial.transform import Rotation as R
 
@@ -205,7 +206,7 @@ class NpPose:
         self.position = value.position
         self.orientation = value.orientation
 
-    def get_pose_msg(self) -> Pose:
+    def get_msg(self) -> Pose:
         msg = Pose()
         msg.position = self.position.get_point_msg()
         msg.orientation = self.orientation.get_quat_msg()
@@ -233,22 +234,25 @@ class NpTwist:
     def angular(self, value):
         self._angular.v3 = value
 
-    def set_twist(self, value: Twist):
+    def set_msg(self, value: Twist):
         self.linear = value.linear
         self.angular = value.angular
+
+    def get_msg(self) -> Twist:
+        msg = Twist()
+        msg.linear = self._linear.
 
     
 class NpOdometry:
     def __init__(self, pose: NpPose, twist: NpTwist):
-        self._pose = pose
-        self._twist = twist
+        self.pose = pose
+        self.twist = twist
 
-    @property
-    def pose(self):
-        return self._pose
+    def set_msg(self, value: Odometry):
+        self.pose.set_pose(value.pose.pose)
+        self.twist.set_twist(value.twist.twist)
 
-    @pose.setter
-    def pose(self, value):
-        self._pose = value
-
-    @property
+    def get_msg(self) -> Odometry:
+        msg = Odometry()
+        msg.pose.pose = self.pose.get_msg()
+        msg.twist.twist = self.twist.get_msg()
