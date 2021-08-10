@@ -10,7 +10,7 @@ from scipy.spatial.transform import Rotation as R
 class Frame(IntEnum):
     LLA = Waypoint.LLA
     LOCAL_NED = Waypoint.LOCAL_NED
-    BODY_NED = Waypoint.BODY_NED
+    FRD = Waypoint.FRD
 
 
 # Useful for identifying reference axis or planes
@@ -111,7 +111,7 @@ class NpVector4(np.ndarray):
 
     @classmethod
     def xyzw(cls, x, y, z, w) -> 'NpVector4':
-        return cls.quat(x, y, z, w)
+        return cls.__new__(cls, [x, y, z, w])
 
     @property
     def x(self):
@@ -147,7 +147,7 @@ class NpVector4(np.ndarray):
 
     @property
     def v4(self):
-        return self[:3]
+        return self[:4]
 
     @v4.setter
     def v4(self, value):
@@ -162,7 +162,7 @@ class NpVector4(np.ndarray):
 
     @property
     def euler(self):
-        return NpVector3(R.from_quat(self.orientation).as_euler('xyz'))
+        return NpVector3(R.from_quat(self.v4).as_euler('xyz'))
 
     @euler.setter
     def euler(self, value):
@@ -201,6 +201,14 @@ class NpPose:
     @orientation.setter
     def orientation(self, value):
         self._orientation.v4 = value
+
+    @property
+    def euler(self):
+        return self.orientation.euler
+
+    @euler.setter
+    def euler(self, value):
+        self._orientation.euler = value
     
     def set_pose(self, value: Pose):
         self.position = value.position
@@ -234,19 +242,68 @@ class NpTwist:
     def angular(self, value):
         self._angular.v3 = value
 
+    @property
+    def vx(self):
+        return self._linear.x
+
+    @vx.setter
+    def vx(self, value):
+        self._linear.x = value
+
+    @property
+    def vy(self):
+        return self._linear.y
+
+    @vy.setter
+    def vy(self, value):
+        self._linear.y = value
+
+    @property
+    def vz(self):
+        return self._linear.z
+
+    @vz.setter
+    def vz(self, value):
+        self._linear.z = value
+
     def set_msg(self, value: Twist):
         self.linear = value.linear
         self.angular = value.angular
 
     def get_msg(self) -> Twist:
         msg = Twist()
-        msg.linear = self._linear.
+        msg.linear = self._linear.get_vector3_msg()
+        msg.angular = self._angular.get_vector3_msg()
 
     
 class NpOdometry:
     def __init__(self, pose: NpPose, twist: NpTwist):
         self.pose = pose
         self.twist = twist
+
+    @property
+    def vx(self):
+        return self.twist.vx
+
+    @vx.setter
+    def vx(self, value):
+        self.twist.vx = value
+
+    @property
+    def vy(self):
+        return self.twist.vy
+
+    @vy.setter
+    def vy(self, value):
+        self.twist.vy = value
+
+    @property
+    def vz(self):
+        return self.twist.vz
+
+    @vz.setter
+    def vz(self, value):
+        self.twist.vz = value
 
     def set_msg(self, value: Odometry):
         self.pose.set_pose(value.pose.pose)

@@ -96,3 +96,24 @@ class PIDPositionController:
 
     def reset_errors(self):
         self.prev_error = XYZYaw(0.0, 0.0, 0.0, 0.0)
+
+    def set_current(self, x, y, z, yaw):
+        self.curr_position = XYZYaw(x, y, z, yaw)
+
+    def set_target(self, x, y, z, yaw):
+        self.target_position = XYZYaw(x, y, z, yaw)
+
+
+def wrap_to_pi(angle):
+    return (angle + np.pi) % (2 * np.pi) - np.pi
+
+
+def angular_dist(start, end):
+    start = wrap_to_pi(start)
+    end = wrap_to_pi(end)
+    d = end - start
+    if d > np.pi:
+        d -= 2 * np.pi
+    elif d < -np.pi:
+        d += 2 * np.pi
+    return d

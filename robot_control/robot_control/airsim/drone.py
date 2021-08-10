@@ -94,7 +94,7 @@ class Drone(ADrone, Vehicle):
         # TODO: test using same client as update loop here and make sure no exceptions occur when it is called quickly
         if frame == Frame.LOCAL_NED:
             self._client.move_local_velocity(vx, vy, vz, yaw_rate)
-        elif frame == Frame.BODY_NED:
+        elif frame == Frame.FRD:
             self._client.move_body_velocity(vx, vy, vz, yaw_rate)
         else:
             self.get_logger().error(f"Frame {frame.name} is not supported")

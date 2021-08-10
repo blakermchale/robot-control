@@ -25,14 +25,11 @@ class AVehicle(Node):
         self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
         self._namespace = self.get_namespace().split("/")[-1]
-        self._pose = NpPose(NpVector3.xyz(np.nan, np.nan, np.nan),
+        self.pose = NpPose(NpVector3.xyz(np.nan, np.nan, np.nan),
             NpVector4.xyzw(np.nan, np.nan, np.nan, np.nan))
-        # self._position = NpVector3.xyz(np.nan, np.nan, np.nan)
-        # self._orientation = NpVector4.xyzw(np.nan, np.nan, np.nan, np.nan)
         self._lin_vel = NpVector3.xyz(np.nan, np.nan, np.nan)
         self._ang_vel = NpVector3.xyz(np.nan, np.nan, np.nan)
-        # self._target_position = NpVector3.xyz(np.nan, np.nan, np.nan)
-        self._target = NpPose(NpVector3.xyz(np.nan, np.nan, np.nan),
+        self.target = NpPose(NpVector3.xyz(np.nan, np.nan, np.nan),
             NpVector4.xyzw(np.nan, np.nan, np.nan, np.nan))
         self._wait_moved = Duration(seconds=5)
 
@@ -124,7 +121,7 @@ class AVehicle(Node):
         """
         raise NotImplementedError
 
-    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.BODY_NED):
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.FRD):
         """Sends a velocity command to the vehicle in a specified frame.
 
         Args:
@@ -132,7 +129,7 @@ class AVehicle(Node):
             vy (float): y velocity (m/s)
             vz (float): z velocity (m/s)
             yaw_rate (float): yaw rate (rad/s)
-            frame (int, optional): Enum specifying frame for commands. Defaults to Frame.BODY_NED.
+            frame (int, optional): Enum specifying frame for commands. Defaults to Frame.FRD.
         """
         raise NotImplementedError
 
@@ -145,7 +142,7 @@ class AVehicle(Node):
         Returns:
             float: Distance in m
         """
-        return np.linalg.norm(self.position-self.target_position)
+        return np.linalg.norm(self.position-self.target.position)
 
     def reached_target(self, tolerance=None, distance=None):
         """Determines if we have reached the target
@@ -193,6 +190,7 @@ class AVehicle(Node):
     def _handle_go_waypoint_goal(self, goal: GoWaypoint):
         """Callback for going to a single waypoint."""
         if not self._precheck_go_waypoint_goal():
+            self._abort_go_waypoint()
             goal.abort()
             return GoWaypoint.Result()
         position = goal.request.waypoint.position
@@ -202,11 +200,12 @@ class AVehicle(Node):
         self.send_waypoint(position.x, position.y, position.z, heading, frame)
         feedback_msg = GoWaypoint.Feedback()
         start_time = self.get_clock().now()
-        init_position = self.position
+        init_position = self.position.copy()
         while True:
             if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
                 self.get_logger().error("GoWaypoint: hasn't moved aborting")
                 goal.abort()
+                self._abort_go_waypoint()
                 return GoWaypoint.Result()
             distance = self.distance_to_target()    
             reached = self.reached_target(distance=distance)     
@@ -215,6 +214,7 @@ class AVehicle(Node):
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
                 goal.canceled()  #handle cancel action
+                self._abort_go_waypoint()
                 return GoWaypoint.Result()
             if reached:
                 self.get_logger().info("GoWaypoint: reached destination")
@@ -228,6 +228,10 @@ class AVehicle(Node):
             self.get_logger().warn("GoWaypoint: aborted not armed")
             return False
         return True
+
+    def _abort_go_waypoint(self):
+        """Called when `go_waypoint` is aborted."""
+        pass
 
     def _handle_go_waypoint_cancel(self, cancel):
         """Callback for cancelling waypoint."""
@@ -270,7 +274,7 @@ class AVehicle(Node):
         """Callback for receiving velocity commands to send to vehicle."""
         v = msg.linear
         yaw_rate = msg.angular.z
-        self.send_velocity(v.x, v.y, v.z, yaw_rate, Frame.BODY_NED)
+        self.send_velocity(v.x, v.y, v.z, yaw_rate, Frame.FRD)
 
     ########################
     ## Publishers
@@ -286,7 +290,7 @@ class AVehicle(Node):
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = f"world"  # TODO: update frame
         msg.header = header
-        msg.point = get_point_from_ned(self.target_position.get_point_msg())
+        msg.point = get_point_from_ned(self.target.position.get_point_msg())
         self._pub_target.publish(msg)
 
     def _publish_pose_odom(self):
@@ -324,33 +328,33 @@ class AVehicle(Node):
     ####################
     @property
     def position(self):
-        return self._position
+        return self.pose.position
 
     @position.setter
     def position(self, value):
-        self._position = self.__get_vector3(value)
-    
-    @property
-    def target_position(self):
-        return self._target.position
-
-    @target_position.setter
-    def target_position(self, value):
-        self._target.position = self.__get_vector3(value)
+        self.pose.position = self.__get_vector3(value)
 
     @property
     def orientation(self):
-        return self._orientation
+        return self.pose.orientation
 
     @orientation.setter
     def orientation(self, value):
-        self._orientation = self.__get_vector4(value)
+        self.pose.orientation = self.__get_vector4(value)
+
+    @property
+    def euler(self):
+        return self.pose.orientation.euler
+
+    @euler.setter
+    def euler(self, value):
+        self.pose.orientation.euler = value
 
     @property
     def lin_vel(self):
         return self._lin_vel
 
-    @position.setter
+    @lin_vel.setter
     def lin_vel(self, value):
         self._lin_vel = self.__get_vector3(value)
 
@@ -358,7 +362,7 @@ class AVehicle(Node):
     def ang_vel(self):
         return self._ang_vel
 
-    @position.setter
+    @ang_vel.setter
     def ang_vel(self, value):
         self._ang_vel = self.__get_vector3(value)
 
