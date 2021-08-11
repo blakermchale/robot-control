@@ -64,13 +64,11 @@ class Drone(ADrone, Vehicle):
             # self.get_logger().info(f"Curr error: {self.pid_posctl.curr_error}")
             # self.get_logger().info(f"Curr pos: {self.pid_posctl.curr_position}")
             # self.get_logger().info(f"Targ pos: {self.pid_posctl.target_position}")
-            # Keep track of previous command for is_landed
-            # self._last_vel_cmd.linear.v3 = vel_cmd.xyz
-            # self._last_vel_cmd.angular.z = vel_cmd.yaw
             # self.get_logger().info(f"x: {vel_cmd.x}, y: {vel_cmd.y}, z: {vel_cmd.z}, yaw: {vel_cmd.yaw}", throttle_duration_sec=1.0)
             self.send_velocity(vel_cmd.x, vel_cmd.y, vel_cmd.z, vel_cmd.yaw, Frame.LOCAL_NED)
         elif self.reached_target(0.001) and self.target_valid:
             self._reset_pidctl()
+        # Publish velocity constantly
         msg = Twist()
         # Flip from NED or FRD to ignition frame
         msg = self._last_vel_cmd.get_msg()
@@ -129,11 +127,6 @@ class Drone(ADrone, Vehicle):
             vx, vy, vz, yaw_rate = 0.0, 0.0, 0.0, 0.0
         self._last_vel_cmd.linear.v3 = [vx, vy, vz]
         self._last_vel_cmd.angular.v3 = [0.0, 0.0, yaw_rate]
-        # msg.linear.x = vx
-        # msg.linear.y = -vy
-        # msg.linear.z = -vz
-        # msg.angular.z = yaw_rate
-        # self._pub_ign_twist.publish(msg)
         # self.get_logger().info(f"x: {vx}, y: {vy}, z: {vz}, yaw: {yaw_rate}", throttle_duration_sec=0.1)
 
     def enable_control(self, enable: bool):
@@ -157,7 +150,7 @@ class Drone(ADrone, Vehicle):
         vert_vel = np.abs(self.lin_vel.z)
         landed = horz_vel <= lnd_max_horizontal and vert_vel <= lnd_max_vertical
         # landed = landed and self._last_vel_cmd.vz > 0  # Command doesn't match found velocity
-        landed = landed and self.position.z > -0.06  # TODO: don't make assumption that floor is 0
+        landed = landed and self.position.z > -0.06  # TODO: don't make assumption that floor is 0, use collision sensor
         # self.get_logger().debug(f"Horz: {horz_vel}, Vert: {vert_vel}, landed: {landed}", throttle_duration_sec=1.0)
         # TODO: check rotor speeds and assume landed if off and orientation is not upside down
         # TODO: Landed should check for more than velocity since ignition odom gives back 0 when flying

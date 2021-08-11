@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import rclpy
 from cmd2 import Cmd, Cmd2ArgumentParser, with_argparser
+from rclpy.action import client
 from rclpy.executors import MultiThreadedExecutor
 from robot_control.cli.common import complete_action_call
 from robot_control.cli.drone_client import DroneClient
@@ -13,7 +14,19 @@ class DroneShell(Cmd):
     intro = "Welcome to drone shell! Type ? to list commands"
     def __init__(self) -> None:
         super().__init__()
-        self.client = DroneClient(namespace="drone_0")
+        client = DroneClient(namespace="drone_0")
+        self.clients_archive = {"drone_0": client}
+        self.client = client
+        self.executor = MultiThreadedExecutor()
+        self.executor.add_node(self.client)
+
+    name_argparser = Cmd2ArgumentParser(description='Changes client to new vehicle name.')
+    name_argparser.add_argument('name', type=str, help='vehicle namespace')
+    @with_argparser(name_argparser)
+    def do_name(self, opts):
+        if opts.name not in self.clients_archive.keys():
+            self.clients_archive[opts.name] = DroneClient(namespace=opts.name)
+        self.client = self.clients_archive[opts.name]
         self.executor = MultiThreadedExecutor()
         self.executor.add_node(self.client)
 
