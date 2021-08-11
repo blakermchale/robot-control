@@ -34,6 +34,7 @@ class VehicleClient(Node):
         self._goal_handles = {}
 
     def send_go_waypoint(self, x: float, y: float, z: float, heading: float, frame):
+        self.reset()
         if not self._cli_go_to_coordinate.wait_for_server(timeout_sec=self._timeout_sec):
             self.get_logger().error("No action server available")
             return
@@ -49,6 +50,7 @@ class VehicleClient(Node):
         return future
 
     def send_follow_waypoints(self, coordinates: List[Waypoint], tolerance: float):
+        self.reset()
         if not self._cli_follow_coordinates.wait_for_server(timeout_sec=self._timeout_sec):
             self.get_logger().error("No action server available")
             return
@@ -63,6 +65,10 @@ class VehicleClient(Node):
     ########################
     ## Helpers
     ########################
+    def reset(self):
+        """Resets state of client."""
+        self._goal_handles = {}
+
     def _action_response(self, action_name: str, future: Future):
         goal_handle = future.result()
         if not goal_handle.accepted:

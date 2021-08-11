@@ -31,6 +31,7 @@ setup(
             'mavros_rover = robot_control.mavros.rover:main',
             'ignition_drone = robot_control.ignition.drone:main',
             'ignition_rover = robot_control.ignition.rover:main',
+            'shell = robot_control.cli.shell:main',
         ],
     },
 )

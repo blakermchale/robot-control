@@ -31,6 +31,7 @@ class DroneClient(VehicleClient):
             Future: a Future instance to a goal handle that completes when the handle has been
                 accepted or rejected
         """
+        self.reset()
         if not self._cli_arm_takeoff.wait_for_server(timeout_sec=self._timeout_sec):
             self.get_logger().error("No action server available")
             return
@@ -47,6 +48,7 @@ class DroneClient(VehicleClient):
             Future: a Future instance to a goal handle that completes when the handle has been
                 accepted or rejected
         """
+        self.reset()
         if not self._cli_land.wait_for_server(timeout_sec=self._timeout_sec):
             self.get_logger().error("No action server available")
             return

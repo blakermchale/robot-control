@@ -10,7 +10,7 @@ from robot_control.cli.drone_client import DroneClient
 # https://pypi.org/project/cmd2/
 class DroneShell(Cmd):
     prompt = "> "
-    intro = "Welcome! Type ? to list commands"
+    intro = "Welcome to drone shell! Type ? to list commands"
     def __init__(self) -> None:
         super().__init__()
         self.client = DroneClient(namespace="drone_0")

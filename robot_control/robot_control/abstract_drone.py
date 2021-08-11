@@ -139,7 +139,7 @@ class ADrone(AVehicle):
             if goal.is_cancel_requested:
                 goal.canceled()
                 return Land.Result()
-            if self.is_landed() and self.has_moved(init_position):
+            if self.is_landed():
                 if not self.disarm(): self.get_logger().warn("Land: could not disarm at end")
                 self.get_logger().info("Land: success!")
                 goal.succeed()
