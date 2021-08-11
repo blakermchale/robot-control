@@ -5,3 +5,4 @@ msgpack-rpc-python
 numpy
 scipy
 navpy
+cmd2
