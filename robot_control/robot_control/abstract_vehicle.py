@@ -26,12 +26,12 @@ class AVehicle(Node):
         self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
         self._namespace = self.get_namespace().split("/")[-1]
-        self.pose = NpPose(NpVector3.xyz(np.nan, np.nan, np.nan),
-            NpVector4.xyzw(np.nan, np.nan, np.nan, np.nan))
-        self._lin_vel = NpVector3.xyz(np.nan, np.nan, np.nan)
-        self._ang_vel = NpVector3.xyz(np.nan, np.nan, np.nan)
-        self.target = NpPose(NpVector3.xyz(np.nan, np.nan, np.nan),
-            NpVector4.xyzw(np.nan, np.nan, np.nan, np.nan))
+        self.pose = NpPose(NpVector3.xyz(0.0, 0.0, 0.0),
+            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))
+        self._lin_vel = NpVector3.xyz(0.0, 0.0, 0.0)
+        self._ang_vel = NpVector3.xyz(0.0, 0.0, 0.0)
+        self.target = NpPose(NpVector3.xyz(0.0, 0.0, 0.0),
+            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))
         self._wait_moved = Duration(seconds=5)
 
         # Setup loop
@@ -102,23 +102,25 @@ class AVehicle(Node):
         """
         raise NotImplementedError
 
-    def set_target(self, x: float = np.nan, y: float = np.nan, z: float = np.nan):
+    def set_target(self, x: float, y: float, z: float, yaw: float):
         """Sets internal target variable in local NED for state checking and debugging.
 
         Args:
-            x (float): x position
-            y (float): y position
-            z (float): z position
+            x (float): x position (m)
+            y (float): y position (m)
+            z (float): z position (m)
+            yaw (float): heading (rad)
         """
         self.target.position = [x, y, z]
+        self.target.euler.xyz = [0.0, 0.0, yaw]
     
     def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int = Frame.LOCAL_NED):
         """Sends a waypoint to the vehicle in a specified frame.
 
         Args:
-            x (float): x position meters
-            y (float): y position meters
-            z (float): z position meters
+            x (float): x position (m)
+            y (float): y position (m)
+            z (float): z position (m)
             frame (int, optional): Enum specifying frame for commands. Defaults to Frame.LOCAL_NED.
         """
         raise NotImplementedError
@@ -283,7 +285,12 @@ class AVehicle(Node):
         """Callback for receiving velocity commands to send to vehicle."""
         v = msg.linear
         yaw_rate = msg.angular.z
+        self._pre_callback_velocity()
         self.send_velocity(v.x, v.y, v.z, yaw_rate, Frame.FRD)
+
+    def _pre_callback_velocity(self):
+        """Gets called prior to velocity being sent."""
+        pass
 
     ########################
     ## Publishers
@@ -376,13 +383,13 @@ class AVehicle(Node):
         self._ang_vel = self.__get_vector3(value)
 
     def __get_vector3(self, value):
-        if not isinstance(NpVector3):
+        if not isinstance(value, NpVector3):
             return NpVector3(value)
         else:
             return value
     
     def __get_vector4(self, value):
-        if not isinstance(NpVector4):
+        if not isinstance(value, NpVector4):
             return NpVector4(value)
         else:
             return value

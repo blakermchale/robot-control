@@ -14,7 +14,7 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 from nav_msgs.msg import Odometry
 # Our libraries
-from robot_control.utils.pid_position_controller import PIDPositionController
+from robot_control.utils.pid_position_controller import PIDPositionController, XYZYaw
 # Common packages
 import numpy as np
 from argparse import ArgumentParser
@@ -65,12 +65,18 @@ class Drone(ADrone, Vehicle):
             # self.get_logger().info(f"Curr pos: {self.pid_posctl.curr_position}")
             # self.get_logger().info(f"Targ pos: {self.pid_posctl.target_position}")
             # Keep track of previous command for is_landed
-            self._last_vel_cmd.linear.v3 = vel_cmd.xyz
-            self._last_vel_cmd.angular.z = vel_cmd.yaw
+            # self._last_vel_cmd.linear.v3 = vel_cmd.xyz
+            # self._last_vel_cmd.angular.z = vel_cmd.yaw
             # self.get_logger().info(f"x: {vel_cmd.x}, y: {vel_cmd.y}, z: {vel_cmd.z}, yaw: {vel_cmd.yaw}", throttle_duration_sec=1.0)
             self.send_velocity(vel_cmd.x, vel_cmd.y, vel_cmd.z, vel_cmd.yaw, Frame.LOCAL_NED)
         elif self.reached_target(0.001) and self.target_valid:
             self._reset_pidctl()
+        msg = Twist()
+        # Flip from NED or FRD to ignition frame
+        msg = self._last_vel_cmd.get_msg()
+        msg.linear.y *= -1
+        msg.linear.z *= -1
+        self._pub_ign_twist.publish(msg)
         super().update()
 
     #####################
@@ -79,11 +85,11 @@ class Drone(ADrone, Vehicle):
     # TODO: how should return flag be set for arm/disarm?
     def arm(self):
         self.enable_control(True)
-        self.send_velocity(0.0, 0.0, 0.0, 0.0)
+        self._reset_pidctl()
         return True
     
     def disarm(self):
-        self.send_velocity(0.0, 0.0, 0.0, 0.0)
+        self._reset_pidctl()
         self.enable_control(False)
         return True
 
@@ -92,6 +98,7 @@ class Drone(ADrone, Vehicle):
         return True
 
     def land(self):
+        self._reset_pidctl()
         self.send_velocity(0.0, 0.0, 1.0, 0.0)
         return True
 
@@ -119,15 +126,22 @@ class Drone(ADrone, Vehicle):
             pass
         else:
             self.get_logger().error(f"Frame {frame.name} is not supported")
-            return
-        msg.linear.x = vx
-        msg.linear.y = -vy
-        msg.linear.z = -vz
-        msg.angular.z = yaw_rate
-        self._pub_ign_twist.publish(msg)
+            vx, vy, vz, yaw_rate = 0.0, 0.0, 0.0, 0.0
+        self._last_vel_cmd.linear.v3 = [vx, vy, vz]
+        self._last_vel_cmd.angular.v3 = [0.0, 0.0, yaw_rate]
+        # msg.linear.x = vx
+        # msg.linear.y = -vy
+        # msg.linear.z = -vz
+        # msg.angular.z = yaw_rate
+        # self._pub_ign_twist.publish(msg)
         # self.get_logger().info(f"x: {vx}, y: {vy}, z: {vz}, yaw: {yaw_rate}", throttle_duration_sec=0.1)
 
     def enable_control(self, enable: bool):
+        """Enables control of multicopter through system plugin.
+
+        Args:
+            enable (bool): Flag that enables control.
+        """
         msg = Bool()
         msg.data = enable
         self._pub_ign_enable.publish(msg)
@@ -179,8 +193,10 @@ class Drone(ADrone, Vehicle):
 
     def _reset_pidctl(self):
         self.target_valid = False
-        while np.linalg.norm(self.lin_vel.v3) != 0:
-            self.send_velocity(0., 0., 0., 0., Frame.FRD)
+        self.send_velocity(0., 0., 0., 0., Frame.FRD)
+
+    def _pre_callback_velocity(self):
+        self.target_valid = False
 
 
 def main(args=None):

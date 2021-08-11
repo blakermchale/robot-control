@@ -60,11 +60,11 @@ class Drone(ADrone, Vehicle):
 
     def land(self):
         client = MyMultirotorClient(self._namespace)
-        init_pos = self.position
+        init_pos = self.position.copy()
         land_count = 0
         max_lands = 5
         while not self.has_moved(init_pos, Axis.Z):
-            init_pos = self.position
+            init_pos = self.position.copy()
             self.get_logger().debug(f"calling async #{land_count}")
             future = client.land()
             future.join()
@@ -77,7 +77,7 @@ class Drone(ADrone, Vehicle):
 
     def takeoff(self, alt: float):
         goal_alt = self.position.z + -1*alt
-        self.set_target(self.position.x, self.position.y, goal_alt)
+        self.set_target(self.position.x, self.position.y, goal_alt, self.euler.z)
         client = MyMultirotorClient(self._namespace)
         client.takeoff(goal_alt)
         return True
@@ -85,7 +85,7 @@ class Drone(ADrone, Vehicle):
 
     def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int):
         # TODO: handle frame conversions
-        self.set_target(x, y, z)
+        self.set_target(x, y, z, heading)
         client = MyMultirotorClient(self._namespace)
         client.move_position(x, y, z, heading)
         # self._client.move_position(x, y, z, heading)

@@ -274,6 +274,7 @@ class NpTwist:
         msg = Twist()
         msg.linear = self._linear.get_vector3_msg()
         msg.angular = self._angular.get_vector3_msg()
+        return msg
 
     
 class NpOdometry:
@@ -313,3 +314,4 @@ class NpOdometry:
         msg = Odometry()
         msg.pose.pose = self.pose.get_msg()
         msg.twist.twist = self.twist.get_msg()
+        return msg
