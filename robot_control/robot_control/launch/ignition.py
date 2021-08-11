@@ -10,6 +10,7 @@ from robot_control.launch.common import get_local_arguments, combine_names
 
 
 pkg_ros_ign_gazebo = get_package_share_directory('ros_ign_gazebo')
+pkg_robot_ignition = get_package_share_directory('robot_ignition')
 
 # Arguments with relevant info, type defaults to string
 LAUNCH_ARGS = [
@@ -35,6 +36,7 @@ def launch_setup(context, *args, **kwargs):
     # Ignition env variables
     setup()
     # Add args to ign gazebo call
+    # world = os.path.join(pkg_robot_ignition, "worlds", world)
     ign_args = f"-r {world}"
     if largs["gui"] and not largs["server"]: ign_args += " -g"
     if largs["server"] and not largs["gui"]: ign_args += " -s"
@@ -65,3 +67,4 @@ def setup():
     os.environ["IGN_GAZEBO_SYSTEM_PLUGIN_PATH"] = combine_names(plugins, ":")
     resources = [os.environ.get("IGN_GAZEBO_RESOURCE_PATH"), os.path.join(px4_ign_path, "models")]
     os.environ["IGN_GAZEBO_RESOURCE_PATH"] = combine_names(resources, ":")
+    print(os.environ["IGN_GAZEBO_SYSTEM_PLUGIN_PATH"])

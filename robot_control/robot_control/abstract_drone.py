@@ -71,17 +71,19 @@ class ADrone(AVehicle):
         if not self.takeoff(goal.request.altitude):
             self.get_logger().error("ArmTakeoff: could not send command")
             goal.abort()
+            self._abort_arm_takeoff()
             return ArmTakeoff.Result()
         self.get_logger().debug("ArmTakeoff: waiting to reach altitude")
         feedback_msg = ArmTakeoff.Feedback()
         start_time = self.get_clock().now()
-        init_position = self._position
+        init_position = self.position.copy()
         while True:
             distance = self.distance_to_target()    
             reached = self.reached_target(distance=distance)        
             if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
                 self.get_logger().error("ArmTakeoff: hasn't moved aborting")
                 self.disarm()
+                self._abort_arm_takeoff()
                 goal.abort()
                 return ArmTakeoff.Result()
             if distance is not None: #publish distance to target
@@ -89,6 +91,7 @@ class ADrone(AVehicle):
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
                 goal.canceled() #handle cancel action
+                self._abort_arm_takeoff()
                 return ArmTakeoff.Result()
             if reached:
                 self.get_logger().info("ArmTakeoff: reached destination")
@@ -113,6 +116,10 @@ class ADrone(AVehicle):
         """Method that is ran after successful arm takeoff."""
         pass
 
+    def _abort_arm_takeoff(self):
+        """Method that is ran after failed arm takeoff."""
+        pass
+
     def _handle_land_goal(self, goal):
         """Action callback to land vehicle.
         """
@@ -123,7 +130,7 @@ class ADrone(AVehicle):
             return Land.Result()
         self.get_logger().debug("Land: waiting")
         start_time = self.get_clock().now()
-        init_position = self._position
+        init_position = self.position.copy()
         while True:
             if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
                 self.get_logger().error("Land: hasn't moved aborting")
@@ -132,7 +139,7 @@ class ADrone(AVehicle):
             if goal.is_cancel_requested:
                 goal.canceled()
                 return Land.Result()
-            if self.is_landed():
+            if self.is_landed() and self.has_moved(init_position):
                 if not self.disarm(): self.get_logger().warn("Land: could not disarm at end")
                 self.get_logger().info("Land: success!")
                 goal.succeed()
