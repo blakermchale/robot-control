@@ -14,7 +14,8 @@ from std_srvs.srv import Trigger
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from robot_control_interfaces.msg import Waypoint
 # Our libraries
-from robot_control.utils import NpPose, NpTwist, NpVector3, NpVector4, Frame, Axis, AXIS_TO_MASK
+from .utils import NpPose, NpTwist, NpVector3, NpVector4, Frame, Axis, AXIS_TO_MASK
+from .utils.math import angular_dist
 # Common libraries
 import numpy as np
 
@@ -58,7 +59,8 @@ class AVehicle(Node):
             cancel_callback=self._handle_follow_waypoints_cancel)
 
         # ROS parameters
-        self.declare_parameter('tolerance_location', 0.7)
+        self.declare_parameter('tolerance.xyz', 0.7)
+        self.declare_parameter('tolerance.yaw', 0.1)
         self.get_logger().debug("AVehicle initialized")
 
     def update(self):
@@ -148,15 +150,17 @@ class AVehicle(Node):
         """Determines if we have reached the target
 
         Args:
-            tolerance (float, optional): Metres of tolerance to say that a target has been reached. Defaults to `tolerance_location` ros2 parameter.
+            tolerance (float, optional): Metres of tolerance to say that a target has been reached. Defaults to `tolerance.xyz` ros2 parameter.
             distance (float, optional): Distance away from target. Defaults to vehicle distance away.
 
         Returns:
             bool: Whether the target has been reached
         """
         if tolerance is None:
-            tolerance = self.get_parameter('tolerance_location').value
-        return tolerance >= (self.distance_to_target() if distance is None else distance)
+            tolerance = self.get_parameter('tolerance.xyz').value
+        tolerance_yaw = self.get_parameter('tolerance.yaw').value
+        # TODO: need to get euler of vehicle in its FRD frame for maps with slants and ground vehicle
+        return tolerance >= (self.distance_to_target() if distance is None else distance) and np.abs(angular_dist(self.euler.z, self.target.euler.z)) <= tolerance_yaw
 
     def has_moved(self, init_position: np.ndarray, axis: Axis = Axis.XYZ):
         """Determines if vehicle has moved significantly.
@@ -172,7 +176,7 @@ class AVehicle(Node):
         position = self.position * mask
         init_position *= mask
         dist = np.linalg.norm(position - init_position)
-        tolerance = self.get_parameter('tolerance_location').value
+        tolerance = self.get_parameter('tolerance.xyz').value
         # self.get_logger().debug(f"Checking moved from {init_position}, dist: {dist} m", throttle_duration_sec=1.0)
         return dist > tolerance
 
@@ -218,6 +222,7 @@ class AVehicle(Node):
                 return GoWaypoint.Result()
             if reached:
                 self.get_logger().info("GoWaypoint: reached destination")
+                self._succeed_go_waypoint()
                 goal.succeed()  #handle success
                 return GoWaypoint.Result()
             self._check_rate.sleep()
@@ -231,6 +236,10 @@ class AVehicle(Node):
 
     def _abort_go_waypoint(self):
         """Called when `go_waypoint` is aborted."""
+        pass
+
+    def _succeed_go_waypoint(self):
+        """Called when `go_waypoint` succeeds."""
         pass
 
     def _handle_go_waypoint_cancel(self, cancel):

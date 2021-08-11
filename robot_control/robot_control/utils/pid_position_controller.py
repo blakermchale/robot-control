@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import numpy as np
+from .math import angular_dist
 
 
 class XYZYaw:
@@ -8,6 +9,9 @@ class XYZYaw:
         self.y = y
         self.z = z
         self.yaw = yaw
+
+    def __str__(self):
+        return f"x: {self.x}, y: {self.y}, z: {self.z}, yaw: {self.yaw}"
 
     @property
     def xyz(self):
@@ -91,8 +95,8 @@ class PIDPositionController:
         if np.abs(self.vel_cmd.x) > self.constraints.max_vel_vert_abs:
             self.vel_cmd.z = (self.vel_cmd.z / np.abs(self.vel_cmd.z)) * self.constraints.max_vel_vert_abs
 
-        # if np.abs(self.vel_cmd.yaw) > self.constraints.max_yaw_rate:
-        #     self.vel_cmd.yaw 
+        if np.abs(self.vel_cmd.yaw) > self.constraints.max_yaw_rate:
+            self.vel_cmd.yaw = (self.vel_cmd.yaw / np.abs(self.vel_cmd.yaw)) * self.constraints.max_yaw_rate
 
     def reset_errors(self):
         self.prev_error = XYZYaw(0.0, 0.0, 0.0, 0.0)
@@ -102,18 +106,3 @@ class PIDPositionController:
 
     def set_target(self, x, y, z, yaw):
         self.target_position = XYZYaw(x, y, z, yaw)
-
-
-def wrap_to_pi(angle):
-    return (angle + np.pi) % (2 * np.pi) - np.pi
-
-
-def angular_dist(start, end):
-    start = wrap_to_pi(start)
-    end = wrap_to_pi(end)
-    d = end - start
-    if d > np.pi:
-        d -= 2 * np.pi
-    elif d < -np.pi:
-        d += 2 * np.pi
-    return d
