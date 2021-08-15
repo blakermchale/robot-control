@@ -117,7 +117,7 @@ def launch_setup(context, *args, **kwargs):
     elif vehicle_type == VehicleType.ROVER:
         model = "r1_rover"
         vehicle_exe = "rover"
-        raise Exception("Rover not supported yet")
+        # raise Exception("Rover not supported yet")
     elif vehicle_type == VehicleType.PLANE:
         model = "plane"
         vehicle_exe = "plane"
@@ -369,8 +369,45 @@ def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, ma
             )
         else:
             raise Exception(f"Api '{api.name}' not supported for ignition drone")
+    elif vehicle_type == VehicleType.ROVER:
+        if api == ApiType.MAVROS:
+            file_path = f'{pkg_robot_ignition}/models/rover_mavlink/model.sdf.jinja'
+            # file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/simulation-ignition/models/x3/model.sdf'
+            # file_path = f'{os.environ["HOME"]}/.ignition/fuel/fuel.ignitionrobotics.org/openrobotics/models/construction cone/2/model.sdf'
+        elif api == ApiType.NONE:
+            file_path = f'{pkg_robot_ignition}/models/x1_ignition/model.sdf'
+            # ld.append(
+            #     Node(
+            #         package="ros_ign_bridge", executable="parameter_bridge",
+            #         arguments=[
+            #             # World info
+            #             f"/world/empty/pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V",
+            #             # Multicopter control
+            #             f"/{namespace}/gazebo/command/twist@geometry_msgs/msg/Twist]ignition.msgs.Twist",
+            #             f"/{namespace}/enable@std_msgs/msg/Bool]ignition.msgs.Boolean",
+            #             # Joint state publisher
+            #             f"/world/empty/model/{namespace}/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model",
+            #             # Odometry publisher
+            #             f"/model/{namespace}/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry",
+            #         ],
+            #         remappings=[
+            #             # World info
+            #             # (f"/world/empty/pose/info"),
+            #             # Multicopter control
+            #             (f"/{namespace}/gazebo/command/twist", f"/{namespace}/_ign/gazebo/command/twist"),
+            #             (f"/{namespace}/enable", f"/{namespace}/_ign/enable"),
+            #             # Joint state publisher
+            #             (f"/world/empty/model/{namespace}/joint_state", f"/{namespace}/_ign/joint_state"),
+            #             # Odometry publisher
+            #             (f"/model/{namespace}/odom", f"/{namespace}/_ign/odom"),
+            #         ],
+            #         output="screen"
+            #     )
+            # )
+        else:
+            raise Exception(f"Api '{api.name}' not supported for ignition rover")
     else:
-        raise Exception("Vehicle type needs to be specified")
+        raise Exception(f"Vehicle type '{vehicle_type.name}' not supported")
 
     tmp_path, robot_desc = parse_model_file(file_path, mappings)
 
