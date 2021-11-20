@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 '''
-common.py
+Common
 =======================
 
 Common functions for completing `VehicleClient` futures.
@@ -8,13 +8,15 @@ Common functions for completing `VehicleClient` futures.
 from typing import List, Type
 from rclpy.duration import Duration
 from rclpy.action.client import GoalStatus
-from robot_control.cli.vehicle_client import VehicleClient
 from rclpy.executors import Executor
 from rclpy.task import Future
 import functools
+from rclpy.parameter import Parameter
+from rcl_interfaces.msg import ParameterValue
 
 
-def complete_action_call(node: VehicleClient, executor: Type[Executor], future, action_name: str):
+def complete_action_call(node, executor: Type[Executor], future, action_name: str):
+    """Sends single action call."""
     def get_result_cb(future):
         node.get_logger().info(f"Got result for '{action_name}'")
     executor.spin_until_future_complete(future)
@@ -38,6 +40,7 @@ def complete_action_call(node: VehicleClient, executor: Type[Executor], future, 
 
 #TODO: reimplement below, figure out if a new node is needed for logging (don't use 'drone_0' hardcode)
 def complete_clients(executor: Executor, clients, futures: List[Future], action_names: List[str]):
+    """Waits til multiple action calls complete."""
     if len(futures) != len(action_names) or len(futures) != len(clients.keys()):
         raise Exception("Number of clients, futures, and action names must match")
     def get_result_cb(node, action_name, future):
@@ -77,10 +80,12 @@ def complete_clients(executor: Executor, clients, futures: List[Future], action_
 
 
 def spin_until_futures_complete(executor: Executor, futures: List[Future]):
+    """Spins executor until list of futures complete."""
     for future in futures: executor.spin_once_until_future_complete(future)
 
 
 def check_futures_done(futures: List[Future]):
+    """Checks that list of futures are all done."""
     for future in futures:
         if not future.done():
             return False
@@ -88,6 +93,7 @@ def check_futures_done(futures: List[Future]):
 
 
 def check_goal_handles_success(goal_handles: List):
+    """Checks list of goal handles for success."""
     for goal_handle in goal_handles:
         if goal_handle.status != GoalStatus.STATUS_SUCCEEDED:
             return False
@@ -95,7 +101,32 @@ def check_goal_handles_success(goal_handles: List):
 
 
 def check_for_nones(ls: List):
+    """Checks for nones in list."""
     for i in ls:
         if i is None:
             return True
     return False
+
+
+def get_parameter_value_msg_from_type(type_, value):
+    """Converts a type enum and value to its corresponding `ParameterValue` msg."""
+    param_msg = ParameterValue(type=type_)
+    if Parameter.Type.BOOL.value == type_:
+        param_msg.bool_value = bool(value)
+    elif Parameter.Type.INTEGER.value == type_:
+        param_msg.integer_value = int(value)
+    elif Parameter.Type.DOUBLE.value == type_:
+        param_msg.double_value = float(value)
+    elif Parameter.Type.STRING.value == type_:
+        param_msg.string_value = str(value)
+    elif Parameter.Type.BYTE_ARRAY.value == type_:
+        param_msg.byte_array_value = value
+    elif Parameter.Type.BOOL_ARRAY.value == type_:
+        param_msg.bool_array_value = value
+    elif Parameter.Type.INTEGER_ARRAY.value == type_:
+        param_msg.integer_array_value = value
+    elif Parameter.Type.DOUBLE_ARRAY.value == type_:
+        param_msg.double_array_value = value
+    elif Parameter.Type.STRING_ARRAY.value == type_:
+        param_msg.string_array_value = value
+    return param_msg

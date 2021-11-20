@@ -91,6 +91,11 @@ class Drone(ADrone, Vehicle):
         self.enable_control(False)
         return True
 
+    def kill(self):
+        self._reset_pidctl()
+        self.enable_control(False)
+        return True
+
     def halt(self):
         self._reset_pidctl()
         return True

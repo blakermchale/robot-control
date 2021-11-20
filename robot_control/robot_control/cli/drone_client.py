@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 '''
-drone_client.py
+Drone Client
 =======================
 
 Generic drone client to ROS2 actions and topics in companion_computing. Easy publishing, calling,
@@ -9,15 +9,16 @@ and sending goals.
 from rclpy.action import ActionClient
 
 from robot_control_interfaces.action import ArmTakeoff, Land
+from std_srvs.srv import Trigger
 
 import functools
-from robot_control.cli.vehicle_client import VehicleClient
+from .vehicle_client import VehicleClient
 from rclpy.task import Future
 
 
 class DroneClient(VehicleClient):
-    def __init__(self, namespace=None):
-        super().__init__(namespace=namespace)
+    def __init__(self, executor, namespace=None):
+        super().__init__(executor, namespace=namespace)
         self._cli_arm_takeoff = ActionClient(self, ArmTakeoff, "arm_takeoff")
         self._cli_land = ActionClient(self, Land, "land")
 
@@ -57,7 +58,7 @@ class DroneClient(VehicleClient):
         future = self._cli_land.send_goal_async(goal)
         future.add_done_callback(functools.partial(self._action_response, "land"))
         return future
-
+    
     #######################
     ## Feedback callbacks
     #######################
