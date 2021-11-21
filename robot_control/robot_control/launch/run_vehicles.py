@@ -232,6 +232,7 @@ def launch_setup(context, *args, **kwargs):
                             "target_component_id": 1,
                             "fcu_protocol": "v2.0",
                         },
+                        os.path.join(robot_control, "config", "px4_sim_params.yaml"),
                         # os.path.join(robot_control, "config", "px4_config.yaml"),
                         # os.path.join(robot_control, "config", "px4_pluginlists.yaml")
                     ]

@@ -5,6 +5,7 @@ from robot_control.mavros.vehicle import Vehicle
 # ROS libraries
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
+from mavros_msgs.srv import CommandTOL
 # Common packages
 from argparse import ArgumentParser
 
@@ -12,7 +13,45 @@ from argparse import ArgumentParser
 class Drone(ADrone, Vehicle):
     def __init__(self, instance=0):
         super().__init__( instance=instance)
+        
+        # ROS2 services
+        self._cli_takeoff = self.create_client(CommandTOL, "mavros/cmd/takeoff")
+        self._cli_land = self.create_client(CommandTOL, "mavros/cmd/land")
+
         self.get_logger().debug("Initialized Drone!")
+
+    ######################
+    ## Control commands ##
+    ######################
+    def takeoff(self, alt: float):
+        req = CommandTOL.Request()
+        req.altitude = float(alt) # Set target altitude
+        req.latitude = float("nan") # nan tells it to use current lat/lon/yaw
+        req.longitude = float("nan")
+        req.yaw = float("nan")
+        self.set_target(self.position.x, self.position.y, -alt, self.euler.z)
+        resp = self._cli_takeoff.call(req)
+        if not resp.success:
+            self.get_logger().error(f"Failed to takeoff (MAV_RESULT={resp.result})")
+            return False
+        return True
+
+    def land(self):
+        req = CommandTOL.Request()
+        req.latitude = float("nan")
+        req.longitude = float("nan")
+        req.yaw = float("nan")
+        resp = self._cli_land.call(req)
+        if not resp.success:
+            self.get_logger().error(f"Failed to land (MAV_RESULT={resp.result})")
+            return False
+        return True
+
+    #####################
+    ## Checking states ##
+    #####################
+    def is_landed(self):
+        return not self._state.armed
 
 
 def main(args=None):
