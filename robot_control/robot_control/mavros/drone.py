@@ -25,11 +25,14 @@ class Drone(ADrone, Vehicle):
     ######################
     def takeoff(self, alt: float):
         req = CommandTOL.Request()
-        req.altitude = float(alt) # Set target altitude
+        if self._amsl_alt is None:
+            self.get_logger().error("Takeoff must have AMSL altitude set")
+            return False
+        req.altitude = float(alt) + self._amsl_alt # Set target altitude
         req.latitude = float("nan") # nan tells it to use current lat/lon/yaw
         req.longitude = float("nan")
         req.yaw = float("nan")
-        self.set_target(self.position.x, self.position.y, -alt, self.euler.z)
+        self.set_target(self.position.x, self.position.y, alt, self.euler.z)  # TODO: is this NED?
         resp = self._cli_takeoff.call(req)
         if not resp.success:
             self.get_logger().error(f"Failed to takeoff (MAV_RESULT={resp.result})")
