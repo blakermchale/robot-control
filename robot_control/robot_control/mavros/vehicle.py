@@ -150,6 +150,9 @@ class Vehicle(AVehicle):
         self.pose.set_pose(msg.pose.pose)
         self.lin_vel.v3 = msg.twist.twist.linear
         self.ang_vel.v3 = msg.twist.twist.angular
+        # convert to NED
+        self.position.y *= -1
+        self.position.z *= -1
 
     def _cb_global_lla(self, msg: NavSatFix):
         self._global_lla = msg

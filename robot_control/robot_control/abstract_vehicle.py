@@ -27,11 +27,11 @@ class AVehicle(Node):
         self.instance = instance
         self._namespace = self.get_namespace().split("/")[-1]
         self.pose = NpPose(NpVector3.xyz(0.0, 0.0, 0.0),
-            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))
+            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))  # NED Pose
         self._lin_vel = NpVector3.xyz(0.0, 0.0, 0.0)
         self._ang_vel = NpVector3.xyz(0.0, 0.0, 0.0)
         self.target = NpPose(NpVector3.xyz(0.0, 0.0, 0.0),
-            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))
+            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))  # NED Target
         self._wait_moved = Duration(seconds=5)
 
         # Setup loop
@@ -102,7 +102,7 @@ class AVehicle(Node):
         """
         raise NotImplementedError
 
-    def set_target(self, x: float, y: float, z: float, yaw: float):
+    def set_target(self, x: float, y: float, z: float, yaw: float, to_ned:bool=False):
         """Sets internal target variable in local NED for state checking and debugging.
 
         Args:
@@ -111,6 +111,9 @@ class AVehicle(Node):
             z (float): z position (m)
             yaw (float): heading (rad)
         """
+        if to_ned:
+            y *= -1
+            z *= -1
         self.target.position = [x, y, z]
         self.target.euler.xyz = [0.0, 0.0, yaw]
     
@@ -344,6 +347,7 @@ class AVehicle(Node):
     ####################
     @property
     def position(self):
+        """Position in NED"""
         return self.pose.position
 
     @position.setter
