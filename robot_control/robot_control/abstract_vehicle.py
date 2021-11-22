@@ -125,6 +125,9 @@ class AVehicle(Node):
             y (float): y position (m)
             z (float): z position (m)
             frame (int, optional): Enum specifying frame for commands. Defaults to Frame.LOCAL_NED.
+
+        Returns:
+            bool: Flag indicating if waypoint was sent successfully.
         """
         raise NotImplementedError
 
@@ -206,7 +209,10 @@ class AVehicle(Node):
         heading = goal.request.waypoint.heading
         frame = goal.request.waypoint.frame
         self.get_logger().debug(f"GoWaypoint: sending x: {position.x}, y: {position.y}, z: {position.z}, heading: {heading}, frame: {frame}")
-        self.send_waypoint(position.x, position.y, position.z, heading, frame)
+        if not self.send_waypoint(position.x, position.y, position.z, heading, frame):
+            self._abort_go_waypoint()
+            goal.abort()
+            return GoWaypoint.Result()
         feedback_msg = GoWaypoint.Feedback()
         start_time = self.get_clock().now()
         init_position = self.position.copy()

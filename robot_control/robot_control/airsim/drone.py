@@ -89,6 +89,7 @@ class Drone(ADrone, Vehicle):
         client = MyMultirotorClient(self._namespace)
         client.move_position(x, y, z, heading)
         # self._client.move_position(x, y, z, heading)
+        return True
 
     def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.LOCAL_NED):
         # TODO: test using same client as update loop here and make sure no exceptions occur when it is called quickly

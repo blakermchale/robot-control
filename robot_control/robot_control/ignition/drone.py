@@ -113,12 +113,13 @@ class Drone(ADrone, Vehicle):
     def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int = Frame.LOCAL_NED):
         if frame == Frame.LOCAL_NED:
             self.target_valid = True
-            self.target.position = [x, y, z]
-            self.target.euler = [0, 0, heading]
+            self.set_target(x, y, z, heading)
         elif frame == Frame.FRD:
             raise NotImplementedError
         else:
             self.get_logger().error(f"Frame {frame.name} is not supported")
+            return False
+        return True
 
     def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.FRD):
         msg = Twist()
