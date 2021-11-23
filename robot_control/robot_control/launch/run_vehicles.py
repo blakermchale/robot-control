@@ -12,7 +12,7 @@ import yaml
 from airsim_utils.generate_settings import create_settings, DEFAULT_PAWN_BP
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
 from airsim_utils.run_environment import run_environment
-from robot_control.launch.common import get_local_arguments, parse_model_file, combine_names
+from ros2_utils.launch import get_local_arguments, parse_model_file, combine_names
 from robot_control.launch.ignition import setup as setup_ignition
 from robot_control.launch.gazebo import setup as setup_gazebo
 

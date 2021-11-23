@@ -6,7 +6,7 @@ from launch.substitutions import LaunchConfiguration
 
 from ament_index_python.packages import get_package_share_directory
 import os
-from robot_control.launch.common import combine_names
+from ros2_utils.launch import combine_names
 
 
 gazebo_ros = get_package_share_directory("gazebo_ros")

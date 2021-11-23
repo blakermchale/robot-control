@@ -6,7 +6,7 @@ from launch.substitutions import LaunchConfiguration
 
 from ament_index_python.packages import get_package_share_directory
 import os
-from robot_control.launch.common import get_local_arguments, combine_names
+from ros2_utils.launch import get_local_arguments, combine_names
 
 
 pkg_ros_ign_gazebo = get_package_share_directory('ros_ign_gazebo')
