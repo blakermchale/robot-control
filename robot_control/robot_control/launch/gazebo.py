@@ -24,19 +24,12 @@ def launch_setup(context, *args, **kwargs):
     """Allows declaration of launch arguments within the ROS2 context
     """
     world = LaunchConfiguration("world").perform(context)
-
     ld = []
     ld.append(
         LogInfo(msg=[
             'Launching ', LaunchConfiguration('world')
         ]),
     )
-    # If file is not absolute assume it is a world from PX4
-    if not os.path.exists(world):
-        # Check for empty variables
-        if not os.environ.get("PX4_AUTOPILOT"):
-            raise Exception("PX4_AUTOPILOT env variable must be set")
-        world = os.path.join(os.environ["PX4_AUTOPILOT"], "Tools", "sitl_gazebo", "worlds", world)
     ld.append(
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -63,10 +56,32 @@ def setup():
         raise Exception("PX4_AUTOPILOT env variable must be set")
     px4_path = os.environ["PX4_AUTOPILOT"]
     px4_gazebo_path = os.path.join(px4_path, "Tools", "sitl_gazebo")
+
+    robot_gazebo_path = get_package_share_directory("robot_gazebo")
+    nuav_gazebo_path = get_package_share_directory("nuav_gazebo")
+
     px4_gazebo_build_path = os.path.join(px4_path, "build", "px4_sitl_default", "build_gazebo")
-    ld_libs = [os.environ.get("LD_LIBRARY_PATH"), px4_gazebo_build_path]
+    ld_libs = [
+        os.environ.get("LD_LIBRARY_PATH"),
+        px4_gazebo_build_path
+    ]
     os.environ["LD_LIBRARY_PATH"] = combine_names(ld_libs, ":")
-    plugins = [os.environ.get("GAZEBO_PLUGIN_PATH"), px4_gazebo_build_path]
+    plugins = [
+        os.environ.get("GAZEBO_PLUGIN_PATH"),
+        px4_gazebo_build_path
+    ]
     os.environ["GAZEBO_PLUGIN_PATH"] = combine_names(plugins, ":")
-    models = [os.environ.get("GAZEBO_MODEL_PATH"), os.path.join(px4_gazebo_path, "models")]
+    models = [
+        os.environ.get("GAZEBO_MODEL_PATH"),
+        os.path.join(px4_gazebo_path, "models"),
+        os.path.join(robot_gazebo_path, "models"),
+        os.path.join(nuav_gazebo_path, "models")
+    ]
     os.environ["GAZEBO_MODEL_PATH"] = combine_names(models, ":")
+    resources = [
+        os.environ.get("GAZEBO_RESOURCE_PATH"),
+        os.path.join(px4_gazebo_path, "worlds"),
+        os.path.join(robot_gazebo_path, "worlds"),
+        os.path.join(nuav_gazebo_path, "worlds")
+    ]
+    os.environ["GAZEBO_RESOURCE_PATH"] = combine_names(resources, ":")
