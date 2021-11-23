@@ -49,7 +49,7 @@ class PX4Command(IntEnum):
 
 class PX4State:
     def __init__(self):
-        self._mode = PX4Mode.LOITER
+        self.mode = PX4Mode.LOITER
         self.armed = False
 
     def from_msg(self, msg: State):
@@ -99,18 +99,21 @@ class Vehicle(AVehicle):
 
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
-        target_pose = PoseStamped()
-        target_pose.header = header
-        target_pose.pose = self.target.get_msg()
-        target_pose.pose.position.z *= -1
-        self._pub_setpoint_local.publish(target_pose)
-        # pos_target = PositionTarget()
-        # pos_target.position = self.target.position.get_point_msg()
-        # pos_target.yaw = self.target.euler.z
-        # pos_target.header = header
-        # pos_target.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
-        # # pos_target.velocity = self.target.  # TODO: need to add velocities to target, make it odom
-        # self._pub_setpoint_local_raw.publish(pos_target)
+        # target_pose = PoseStamped()
+        # target_pose.header = header
+        # target_pose.pose = self.target.get_msg()
+        # target_pose.pose.position.z *= -1
+        # target_pose.pose.orientation = self.target.orientation.get_quat_msg()
+        # self._pub_setpoint_local.publish(target_pose)
+        pos_target = PositionTarget()
+        pos_target.position = self.target.position.get_point_msg()
+        pos_target.position.z *= -1
+        pos_target.position.y *= -1
+        pos_target.yaw = self.target.euler.z
+        pos_target.header = header
+        pos_target.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
+        # pos_target.velocity = self.target.  # TODO: need to add velocities to target, make it odom
+        self._pub_setpoint_local_raw.publish(pos_target)
 
     ######################
     ## Control commands ##
@@ -133,18 +136,25 @@ class Vehicle(AVehicle):
             return False
         return True
 
-    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int = Frame.LOCAL_NED):
-        if frame == Frame.LOCAL_NED:
-            self.set_target(x, y, z, heading)
-        else:
-            self.get_logger().error(f"Frame {frame.name} not implemented yet")
+    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: Frame = Frame.LOCAL_NED):
+        try:
+            x, y, z, roll, pitch, heading = self.convert_position_frame(x, y, z, 0, 0, heading, frame, Frame.LOCAL_NED)
+        except Exception as e:
+            self.get_logger().error(str(e))
             return False
+        self.set_target(x, y, z, heading)
         while not self.in_offboard():
             if not self.set_offboard():
                 self.get_logger().error("Couldn't set offboard mode", throttle_duration_sec=2.0)
                 # return False
             else:
                 self.get_logger().info("Set offboard", throttle_duration_sec=2.0)
+        return True
+
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: Frame = Frame.FRD):
+        vx, vy, vz, roll_rate, pitch_rate, yaw_rate = self.convert_velocity_frame(vx, vy, vz, 0, 0, yaw_rate, frame, Frame.FRD)
+        self.target_odom.lin_vel = [vx, vy, vz]
+        self.target_odom.ang_vel = [roll_rate, pitch_rate, yaw_rate]
         return True
 
     #####################
@@ -245,17 +255,20 @@ class Vehicle(AVehicle):
         exe.add_node(self)
         self._cli_list_params = self.create_client(ListParameters, "mavros/param/list_parameters")
         req = ListParameters.Request()
+        sim_names = set(["NAV_RCL_ACT","COM_RCL_EXCEPT"])
         while True:
             future = self._cli_list_params.call_async(req)
             exe.spin_until_future_complete(future)
-            if "NAV_RCL_ACT"  in future.result().result.names:
+            names = set(future.result().result.names)
+            if sim_names.issubset(names):
                 self.get_logger().debug("Set sim params")
                 break
             self.get_logger().warn(f"Couldn't find sim params in list", throttle_duration_sec=3.0)
         self._cli_set_params = self.create_client(SetParameters, "mavros/param/set_parameters")
         req = SetParameters.Request()
         NAV_RCL_ACT = ParameterMsg(name="NAV_RCL_ACT",value=ParameterValue(type=Parameter.Type.INTEGER.value,integer_value=0))
-        req.parameters = [NAV_RCL_ACT]
+        COM_RCL_EXCEPT = ParameterMsg(name="COM_RCL_EXCEPT",value=ParameterValue(type=Parameter.Type.INTEGER.value,integer_value=4))
+        req.parameters = [NAV_RCL_ACT, COM_RCL_EXCEPT]
         future = self._cli_set_params.call_async(req)
         exe.spin_until_future_complete(future)
 

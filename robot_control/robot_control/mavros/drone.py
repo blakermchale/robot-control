@@ -32,7 +32,7 @@ class Drone(ADrone, Vehicle):
         req.latitude = float("nan") # nan tells it to use current lat/lon/yaw
         req.longitude = float("nan")
         req.yaw = float("nan")
-        self.set_target(self.position.x, self.position.y, alt, self.euler.z, to_ned=True)  # TODO: is this NED?
+        self.set_target(self.position.x, self.position.y, -alt, self.euler.z)  # TODO: is this NED?
         resp = self._cli_takeoff.call(req)
         if not resp.success:
             self.get_logger().error(f"Failed to takeoff (MAV_RESULT={resp.result})")

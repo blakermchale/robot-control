@@ -3,3 +3,4 @@
     # https://docs.px4.io/v1.12/en/simulation/failsafes.html
     NAV_DLL_ACT: 0
     NAV_RCL_ACT: 0
+    COM_RCL_EXCEPT: 4

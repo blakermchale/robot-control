@@ -79,7 +79,7 @@ class ADrone(AVehicle):
         init_position = self.position.copy()
         while True:
             distance = self.distance_to_target()    
-            reached = self.reached_target(distance=distance)        
+            reached = self.reached_target(distance=distance)
             if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
                 self.get_logger().error("ArmTakeoff: hasn't moved aborting")
                 self.disarm()
@@ -105,7 +105,7 @@ class ADrone(AVehicle):
         """
         self.land()
         self.get_logger().info(f'ArmTakeoff: cancelling...')
-        while not self._check_success_land() and not self.is_landed():
+        while not self.is_landed():
             continue
         self.disarm()
         self.get_logger().info(f'ArmTakeoff: cancelled!')

@@ -14,7 +14,7 @@ from std_srvs.srv import Trigger
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from robot_control_interfaces.msg import Waypoint
 # Our libraries
-from .utils import NpPose, NpTwist, NpVector3, NpVector4, Frame, Axis, AXIS_TO_MASK
+from .utils import NpPose, NpTwist, NpVector3, NpVector4, Frame, Axis, AXIS_TO_MASK, NpOdometry
 from .utils.math import angular_dist
 # Common libraries
 import numpy as np
@@ -26,12 +26,14 @@ class AVehicle(Node):
         self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
         self._namespace = self.get_namespace().split("/")[-1]
-        self.pose = NpPose(NpVector3.xyz(0.0, 0.0, 0.0),
-            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))  # NED Pose
-        self._lin_vel = NpVector3.xyz(0.0, 0.0, 0.0)
-        self._ang_vel = NpVector3.xyz(0.0, 0.0, 0.0)
-        self.target = NpPose(NpVector3.xyz(0.0, 0.0, 0.0),
-            NpVector4.xyzw(0.0, 0.0, 0.0, 1.0))  # NED Target
+        self.odom = NpOdometry(
+            NpPose(NpVector3.xyz(0.0, 0.0, 0.0), NpVector4.xyzw(0.0, 0.0, 0.0, 1.0)),
+            NpTwist(NpVector3.xyz(0.0, 0.0, 0.0), NpVector3.xyz(0.0, 0.0, 0.0))
+        )
+        self.target_odom = NpOdometry(
+            NpPose(NpVector3.xyz(0.0, 0.0, 0.0), NpVector4.xyzw(0.0, 0.0, 0.0, 1.0)),
+            NpTwist(NpVector3.xyz(0.0, 0.0, 0.0), NpVector3.xyz(0.0, 0.0, 0.0))
+        )
         self._wait_moved = Duration(seconds=5)
 
         # Setup loop
@@ -60,7 +62,7 @@ class AVehicle(Node):
 
         # ROS parameters
         self.declare_parameter('tolerance.xyz', 0.7)
-        self.declare_parameter('tolerance.yaw', 0.1)
+        self.declare_parameter('tolerance.yaw', 10.0)  # degrees
         self.get_logger().debug("AVehicle initialized")
 
     def update(self):
@@ -71,9 +73,9 @@ class AVehicle(Node):
         self._publish_pose_odom()
         self._publish_target()
 
-    ###################
-    ## Control commands
-    ###################
+    ######################
+    ## Control commands ##
+    ######################
     def halt(self):
         """Halts vehicle at current location"""
         raise NotImplementedError
@@ -102,7 +104,7 @@ class AVehicle(Node):
         """
         raise NotImplementedError
 
-    def set_target(self, x: float, y: float, z: float, yaw: float, to_ned:bool=False):
+    def set_target(self, x: float, y: float, z: float, yaw: float):
         """Sets internal target variable in local NED for state checking and debugging.
 
         Args:
@@ -111,13 +113,11 @@ class AVehicle(Node):
             z (float): z position (m)
             yaw (float): heading (rad)
         """
-        if to_ned:
-            y *= -1
-            z *= -1
         self.target.position = [x, y, z]
-        self.target.euler.xyz = [0.0, 0.0, yaw]
+        self.target.euler = [0.0, 0.0, yaw]
+        # self.get_logger().debug(f"Set target with inputs {[x, y, z, yaw]} to xyz {self.target.position} and euler {self.target.euler}")
     
-    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int = Frame.LOCAL_NED):
+    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: Frame = Frame.LOCAL_NED):
         """Sends a waypoint to the vehicle in a specified frame.
 
         Args:
@@ -131,7 +131,7 @@ class AVehicle(Node):
         """
         raise NotImplementedError
 
-    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.FRD):
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: Frame = Frame.FRD):
         """Sends a velocity command to the vehicle in a specified frame.
 
         Args:
@@ -139,12 +139,15 @@ class AVehicle(Node):
             vy (float): y velocity (m/s)
             vz (float): z velocity (m/s)
             yaw_rate (float): yaw rate (rad/s)
-            frame (int, optional): Enum specifying frame for commands. Defaults to Frame.FRD.
+            frame (Frame, optional): Enum specifying frame for commands. Defaults to Frame.FRD.
+
+        Returns:
+            bool: Flag indicating if velocity was sent successfully.
         """
         raise NotImplementedError
 
     #####################
-    ## Checking states
+    ## Checking states ##
     #####################
     def distance_to_target(self):
         """Returns distance to the target coordinate
@@ -166,9 +169,12 @@ class AVehicle(Node):
         """
         if tolerance is None:
             tolerance = self.get_parameter('tolerance.xyz').value
-        tolerance_yaw = self.get_parameter('tolerance.yaw').value
+        tolerance_yaw = np.deg2rad(self.get_parameter('tolerance.yaw').value)
         # TODO: need to get euler of vehicle in its FRD frame for maps with slants and ground vehicle
-        return tolerance >= (self.distance_to_target() if distance is None else distance) and np.abs(angular_dist(self.euler.z, self.target.euler.z)) <= tolerance_yaw
+        distance = self.distance_to_target() if distance is None else distance
+        ang_distance = np.abs(angular_dist(self.euler.z, self.target.euler.z))
+        # self.get_logger().debug(f"distance: {distance}, angular distance: {ang_distance}", throttle_duration_sec=2.0)
+        return tolerance >= distance and ang_distance <= tolerance_yaw
 
     def has_moved(self, init_position: np.ndarray, axis: Axis = Axis.XYZ):
         """Determines if vehicle has moved significantly.
@@ -196,9 +202,9 @@ class AVehicle(Node):
         """
         raise NotImplementedError
 
-    ########################
-    ## Actions
-    ########################
+    #############
+    ## Actions ##
+    #############
     def _handle_go_waypoint_goal(self, goal: GoWaypoint):
         """Callback for going to a single waypoint."""
         if not self._precheck_go_waypoint_goal():
@@ -207,8 +213,8 @@ class AVehicle(Node):
             return GoWaypoint.Result()
         position = goal.request.waypoint.position
         heading = goal.request.waypoint.heading
-        frame = goal.request.waypoint.frame
-        self.get_logger().debug(f"GoWaypoint: sending x: {position.x}, y: {position.y}, z: {position.z}, heading: {heading}, frame: {frame}")
+        frame = Frame(goal.request.waypoint.frame)
+        self.get_logger().debug(f"GoWaypoint: sending x: {position.x}, y: {position.y}, z: {position.z}, heading: {heading}, frame: {frame.name}")
         if not self.send_waypoint(position.x, position.y, position.z, heading, frame):
             self._abort_go_waypoint()
             goal.abort()
@@ -225,6 +231,7 @@ class AVehicle(Node):
             distance = self.distance_to_target()    
             reached = self.reached_target(distance=distance)     
             if distance is not None:  # publish feedback
+                # TODO: add angular distance to feedback
                 feedback_msg.distance = float(distance)
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
@@ -266,9 +273,9 @@ class AVehicle(Node):
         """Callback for cancelling path."""
         raise NotImplementedError
 
-    ########################
-    ## Services
-    ########################
+    ##############
+    ## Services ##
+    ##############
     def _handle_arm(self, req, res):
         """Callback for arming vehicle."""
         self.get_logger().debug("Arm service called.")
@@ -287,9 +294,9 @@ class AVehicle(Node):
         res.success = self.kill()
         return res
 
-    ########################
-    ## Subscribers
-    ########################
+    #################
+    ## Subscribers ##
+    #################
     def _callback_velocity(self, msg: Twist):
         """Callback for receiving velocity commands to send to vehicle."""
         v = msg.linear
@@ -301,9 +308,9 @@ class AVehicle(Node):
         """Gets called prior to velocity being sent."""
         pass
 
-    ########################
-    ## Publishers
-    ########################
+    ################
+    ## Publishers ##
+    ################
     def _publish_telemetry(self):
         """Publishes common information about vehicle."""
         raise NotImplementedError
@@ -320,26 +327,21 @@ class AVehicle(Node):
 
     def _publish_pose_odom(self):
         """Publishes pose and odometry for debugging."""
-        # PoseStamped
-        pose_msg = PoseStamped()
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = "world"  # TODO: update frame
+        # Odometry
+        odom_msg = self.target_odom.get_msg()
+        odom_msg.header = header
+        odom_msg.pose.pose.position = get_point_from_ned(odom_msg.pose.pose.position)
+        # PoseStamped
+        pose_msg = PoseStamped()
         pose_msg.header = header
-        pose = Pose()
-        pose.position = get_point_from_ned(self.position.get_point_msg())
         # r = R.from_quat(self.orientation)  # TODO: separate quat math to helper
         # euler = r.as_euler('xyz')
         # euler[2] = -euler[2]
         # q = self.orientation  # R.from_euler('xyz', euler).as_quat()
-        pose.orientation = self.orientation.get_quat_msg()
-        pose_msg.pose = pose
-        # Odometry
-        odom_msg = Odometry()
-        odom_msg.header = header
-        odom_msg.pose.pose = pose
-        odom_msg.twist.twist.linear = self.lin_vel.get_vector3_msg()
-        odom_msg.twist.twist.angular = self.lin_vel.get_vector3_msg()
+        pose_msg.pose = odom_msg.pose.pose
         # Publish messages
         self._pub_pose.publish(pose_msg)
         self._pub_odom.publish(odom_msg)
@@ -348,9 +350,9 @@ class AVehicle(Node):
         """Publishes relevant state information. Implementation varies between vehicles."""
         raise NotImplementedError
 
-    ####################
-    ## Properties
-    ####################
+    ################
+    ## Properties ##
+    ################
     @property
     def position(self):
         """Position in NED"""
@@ -378,19 +380,31 @@ class AVehicle(Node):
 
     @property
     def lin_vel(self):
-        return self._lin_vel
+        return self.odom.lin_vel
 
     @lin_vel.setter
     def lin_vel(self, value):
-        self._lin_vel = self.__get_vector3(value)
+        self.odom.lin_vel = self.__get_vector3(value)
 
     @property
     def ang_vel(self):
-        return self._ang_vel
+        return self.odom.ang_vel
 
     @ang_vel.setter
     def ang_vel(self, value):
-        self._ang_vel = self.__get_vector3(value)
+        self.odom.ang_vel = self.__get_vector3(value)
+
+    @property
+    def pose(self):
+        return self.odom.pose
+
+    @property
+    def target(self):
+        return self.target_odom.pose
+
+    @target.setter
+    def target(self, value):
+        self.target_odom.pose = value
 
     def __get_vector3(self, value):
         if not isinstance(value, NpVector3):
@@ -403,6 +417,56 @@ class AVehicle(Node):
             return NpVector4(value)
         else:
             return value
+
+    #############
+    ## Helpers ##
+    #############
+    def convert_position_frame(self, x:float, y:float, z:float, roll:float, pitch:float, yaw:float, in_frame:Frame, out_frame:Frame):
+        """Converts position from one frame to another using 
+
+        Args:
+            x (float): Vehicle x (m).
+            y (float): Vehicle y (m).
+            z (float): Vehicle z (m).
+            roll (float): Vehicle roll (rads).
+            pitch (float): Vehicle pitch (rads).
+            yaw (float): Vehicle yaw (rads).
+            in_frame (Frame): Input position frame.
+            out_frame (Frame): Output position frame.
+
+        Raises:
+            ValueError: Invalid frame type.
+
+        Returns:
+            tuple: Tuple of converted x, y, z, roll, pitch, yaw.
+        """
+        self.get_logger().debug(f"Input frame {in_frame.name} and output frame {out_frame.name} being used")
+        if out_frame == Frame.LOCAL_NED and in_frame == Frame.FRD:
+            position = self.position
+            r = self.orientation.rot_matrix
+            euler = self.orientation.euler
+            p = r.apply([x, y, z])  # Transformed point
+            x_out, y_out, z_out = position + p
+            yaw_out = euler[2] - yaw
+            self.get_logger().debug(f"{position}, in {[x,y,z]}, out {[x_out, y_out, z_out]}")
+        # elif out_frame == Frame.LOCAL_NED and in_frame == Frame.LLA:
+        #     ned = np.asfarray(navpy.lla2ned(x, y, z, local_position.ref_lat, local_position.ref_lon, local_position.ref_alt))
+        #     x = ned[0]
+        #     y = ned[1]
+        #     z = ned[2]
+        elif out_frame == Frame.LOCAL_NED and in_frame == Frame.LOCAL_NED:
+            x_out, y_out, z_out, roll_out, pitch_out, yaw_out = x, y, z, roll, pitch, yaw
+        else:
+            raise ValueError(f"Input frame {in_frame.name} and output frame {out_frame.name} has not been implemented")
+        roll_out, pitch_out = roll, pitch
+        return x_out, y_out, z_out, roll_out, pitch_out, yaw_out
+
+    def convert_velocity_frame(vx: float, vy:float, vz:float, roll_rate:float, pitch_rate:float, yaw_rate:float, in_frame:Frame, out_frame:Frame):
+        if out_frame == Frame.FRD and in_frame == Frame.FRD:
+            vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out = vx, vy, vz, roll_rate, pitch_rate, yaw_rate
+        else:
+            raise ValueError(f"Input frame {in_frame.name} and output frame {out_frame.name} has not been implemented")
+        return vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out
 
 
 def get_point_from_ned(point):

@@ -83,15 +83,19 @@ class Drone(ADrone, Vehicle):
         return True
         # self._client.takeoff(goal_alt)
 
-    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int):
-        # TODO: handle frame conversions
+    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: Frame = Frame.LOCAL_NED):
+        try:
+            x, y, z, roll, pitch, heading = self.convert_position_frame(x, y, z, 0, 0, heading, frame, Frame.LOCAL_NED)
+        except Exception as e:
+            self.get_logger().error(str(e))
+            return False
         self.set_target(x, y, z, heading)
         client = MyMultirotorClient(self._namespace)
         client.move_position(x, y, z, heading)
         # self._client.move_position(x, y, z, heading)
         return True
 
-    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.LOCAL_NED):
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: Frame = Frame.FRD):
         # TODO: test using same client as update loop here and make sure no exceptions occur when it is called quickly
         if frame == Frame.LOCAL_NED:
             self._client.move_local_velocity(vx, vy, vz, yaw_rate)
@@ -99,6 +103,8 @@ class Drone(ADrone, Vehicle):
             self._client.move_body_velocity(vx, vy, vz, yaw_rate)
         else:
             self.get_logger().error(f"Frame {frame.name} is not supported")
+            return False
+        return True
 
     #######################
     ## Actions

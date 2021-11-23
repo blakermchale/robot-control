@@ -167,6 +167,10 @@ class NpVector4(np.ndarray):
     @euler.setter
     def euler(self, value):
         self.v4 = R.from_euler('xyz', value).as_quat()
+
+    @property
+    def rot_matrix(self):
+        return R.from_quat(self.v4)
     
     def get_quat_msg(self):
         msg = Quaternion()
@@ -305,6 +309,22 @@ class NpOdometry:
     @vz.setter
     def vz(self, value):
         self.twist.vz = value
+
+    @property
+    def lin_vel(self):
+        return self.twist.linear
+
+    @lin_vel.setter
+    def lin_vel(self, value):
+        self.twist.linear = value
+
+    @property
+    def ang_vel(self):
+        return self.twist.angular
+
+    @ang_vel.setter
+    def ang_vel(self, value):
+        self.twist.angular = value
 
     def set_msg(self, value: Odometry):
         self.pose.set_pose(value.pose.pose)

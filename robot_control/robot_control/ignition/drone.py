@@ -110,18 +110,17 @@ class Drone(ADrone, Vehicle):
         self.send_waypoint(self.position.x, self.position.y, self.position.z + -alt, self.euler.z, Frame.LOCAL_NED)
         return True
 
-    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: int = Frame.LOCAL_NED):
-        if frame == Frame.LOCAL_NED:
-            self.target_valid = True
-            self.set_target(x, y, z, heading)
-        elif frame == Frame.FRD:
-            raise NotImplementedError
-        else:
-            self.get_logger().error(f"Frame {frame.name} is not supported")
+    def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: Frame = Frame.LOCAL_NED):
+        try:
+            x, y, z, roll, pitch, heading = self.convert_position_frame(x, y, z, 0, 0, heading, frame, Frame.LOCAL_NED)
+        except Exception as e:
+            self.get_logger().error(str(e))
             return False
+        self.target_valid = True
+        self.set_target(x, y, z, heading)
         return True
 
-    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: int = Frame.FRD):
+    def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: Frame = Frame.FRD):
         msg = Twist()
         if frame == Frame.LOCAL_NED:
             r = R.from_quat(self.orientation.v4)
@@ -131,9 +130,11 @@ class Drone(ADrone, Vehicle):
         else:
             self.get_logger().error(f"Frame {frame.name} is not supported")
             vx, vy, vz, yaw_rate = 0.0, 0.0, 0.0, 0.0
+            return False
         self._last_vel_cmd.linear.v3 = [vx, vy, vz]
         self._last_vel_cmd.angular.v3 = [0.0, 0.0, yaw_rate]
         # self.get_logger().info(f"x: {vx}, y: {vy}, z: {vz}, yaw: {yaw_rate}", throttle_duration_sec=0.1)
+        return True
 
     def enable_control(self, enable: bool):
         """Enables control of multicopter through system plugin.
