@@ -61,10 +61,24 @@ def setup():
     px4_path = os.environ["PX4_AUTOPILOT"]
     px4_ign_path = os.path.join(px4_path, "Tools", "simulation-ignition")
     px4_ign_build_path = os.path.join(px4_path, "build", "px4_sitl_default", "build_ign_gazebo")
-    ld_libs = [os.environ.get("LD_LIBRARY_PATH"), px4_ign_build_path]
+
+    robot_ignition_path = get_package_share_directory("robot_ignition")
+
+    ld_libs = [
+        os.environ.get("LD_LIBRARY_PATH"),
+        px4_ign_build_path,
+    ]
     os.environ["LD_LIBRARY_PATH"] = combine_names(ld_libs, ":")
-    plugins = [os.environ.get("IGN_GAZEBO_SYSTEM_PLUGIN_PATH"), px4_ign_build_path]
+
+    plugins = [
+        os.environ.get("IGN_GAZEBO_SYSTEM_PLUGIN_PATH"),
+        px4_ign_build_path,
+    ]
     os.environ["IGN_GAZEBO_SYSTEM_PLUGIN_PATH"] = combine_names(plugins, ":")
-    resources = [os.environ.get("IGN_GAZEBO_RESOURCE_PATH"), os.path.join(px4_ign_path, "models")]
+
+    resources = [
+        os.environ.get("IGN_GAZEBO_RESOURCE_PATH"),
+        os.path.join(px4_ign_path, "models"),
+        os.path.join(robot_ignition_path, "models"),
+    ]
     os.environ["IGN_GAZEBO_RESOURCE_PATH"] = combine_names(resources, ":")
-    print(os.environ["IGN_GAZEBO_SYSTEM_PLUGIN_PATH"])

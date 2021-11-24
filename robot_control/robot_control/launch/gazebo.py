@@ -66,22 +66,25 @@ def setup():
         px4_gazebo_build_path
     ]
     os.environ["LD_LIBRARY_PATH"] = combine_names(ld_libs, ":")
+    
     plugins = [
         os.environ.get("GAZEBO_PLUGIN_PATH"),
         px4_gazebo_build_path
     ]
     os.environ["GAZEBO_PLUGIN_PATH"] = combine_names(plugins, ":")
+
     models = [
         os.environ.get("GAZEBO_MODEL_PATH"),
-        os.path.join(px4_gazebo_path, "models"),
         os.path.join(robot_gazebo_path, "models"),
+        os.path.join(px4_gazebo_path, "models"),
         os.path.join(nuav_gazebo_path, "models")
     ]
     os.environ["GAZEBO_MODEL_PATH"] = combine_names(models, ":")
+
     resources = [
         os.environ.get("GAZEBO_RESOURCE_PATH"),
-        os.path.join(px4_gazebo_path, "worlds"),
         os.path.join(robot_gazebo_path, "worlds"),
+        os.path.join(px4_gazebo_path, "worlds"),
         os.path.join(nuav_gazebo_path, "worlds")
     ]
     os.environ["GAZEBO_RESOURCE_PATH"] = combine_names(resources, ":")

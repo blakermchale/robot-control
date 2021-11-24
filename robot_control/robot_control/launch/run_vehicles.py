@@ -8,6 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 import os
 from enum import IntEnum, auto
 import yaml
+from glob import glob
 
 from airsim_utils.generate_settings import create_settings, DEFAULT_PAWN_BP
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
@@ -76,6 +77,7 @@ LAUNCH_ARGS = [
         "choices": [e.name.lower() for e in ApiType]},
     {"name": "sim_source",    "default": "default",           "description": "Source for simulation.",
         "choices": [e.name.lower() for e in SimSource]},
+    {"name": "model_name",    "default": "",                  "description": "Model to spawn in ignition or gazebo. Overrides sim_source."},
 ]
 
 
@@ -167,7 +169,7 @@ def launch_setup(context, *args, **kwargs):
             # TODO: Figure out how to use multiple vehicles with HITL?
             ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                    mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type,
-                                   model_source=sim_source)
+                                   model_source=sim_source, model_name=args["model_name"])
     elif sim == SimType.IGNITION:
         setup_ignition()
         ld.append(
@@ -264,7 +266,7 @@ def launch_setup(context, *args, **kwargs):
 
 def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
                      hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE,
-                     model_source=SimSource.DEFAULT):
+                     model_source=SimSource.DEFAULT, model_name=""):
     """Spawns vehicle in running gazebo world.
 
     Args:
@@ -274,7 +276,10 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
         mavlink_udp_port (int, optional): UDP port to use with mavlink. Defaults to 14560.
         hil_mode (bool, optional): Flag that turns on HITL mode. Defaults to False.
         serial_device (str, optional): Path to PX4 serial device port. Defaults to "/dev/ttyACM0".
+        model_source (SimSource, optional): Source for models to be derived from. Defaults to SimSource.DEFAULT.
+        model_name (str, optional): Name of model to find in `GAZEBO_MODEL_PATH`. If empty uses model_source to find model. Defaults to "".
     """
+    ld = []
     # TODO: URDF still needs to be implemented
     # Creates tmp URDF file with frog v2
     mappings = {"namespace": namespace,
@@ -284,40 +289,46 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
                 "serial_device": serial_device,
                 "serial_baudrate": "921600",
                 "hil_mode": "1" if hil_mode else "0"}
-    if model_source == SimSource.NUAV:
-        pkg_nuav_gazebo = get_package_share_directory("nuav_gazebo")
-        if vehicle_type == VehicleType.DRONE:
-            mappings["camera_tilt"] = 0.0
-            mappings["include_camera"] = True
-            file_path = f'{pkg_nuav_gazebo}/models/robots/frog_v2/model.sdf.jinja'
-        elif vehicle_type == VehicleType.ROVER:
-            file_path = f'{pkg_nuav_gazebo}/models/robots/bullfrog/model.sdf.jinja'
-        elif vehicle_type == VehicleType.PLANE:
-            file_path = f'{pkg_nuav_gazebo}/models/robots/wallace/model.sdf.jinja'
-        # TODO: add carrier?
+    file_path = get_model_path("GAZEBO_MODEL_PATH", model_name)
+    if file_path == "" and model_name == "":
+        if model_source == SimSource.NUAV:
+            pkg_nuav_gazebo = get_package_share_directory("nuav_gazebo")
+            if vehicle_type == VehicleType.DRONE:
+                mappings["camera_tilt"] = 0.0
+                mappings["include_camera"] = True
+                file_path = f'{pkg_nuav_gazebo}/models/robots/frog_v2/model.sdf.jinja'
+            elif vehicle_type == VehicleType.ROVER:
+                file_path = f'{pkg_nuav_gazebo}/models/robots/bullfrog/model.sdf.jinja'
+            elif vehicle_type == VehicleType.PLANE:
+                file_path = f'{pkg_nuav_gazebo}/models/robots/wallace/model.sdf.jinja'
+            # TODO: add carrier?
+            else:
+                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
+        elif model_source == SimSource.ROBOT:
+            pkg_robot_gazebo = get_package_share_directory("robot_gazebo")
+            if vehicle_type == VehicleType.DRONE:
+                file_path = f'{pkg_robot_gazebo}/models/iris_realsense/model.sdf.jinja'
+            else:
+                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
+        elif model_source == SimSource.DEFAULT:
+            if vehicle_type == VehicleType.DRONE:
+                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/iris/iris.sdf.jinja'
+            elif vehicle_type == VehicleType.ROVER:
+                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/r1_rover/r1_rover.sdf.jinja'
+            elif vehicle_type == VehicleType.PLANE:
+                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/plane/plane.sdf.jinja'
+            else:
+                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
         else:
-            raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-    elif model_source == SimSource.ROBOT:
-        pkg_nuav_gazebo = get_package_share_directory("robot_gazebo")
-        if vehicle_type == VehicleType.DRONE:
-            file_path = f'{pkg_nuav_gazebo}/models/iris/model.sdf.jinja'
-        else:
-            raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-    elif model_source == SimSource.DEFAULT:
-        if vehicle_type == VehicleType.DRONE:
-            file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/iris/iris.sdf.jinja'
-        elif vehicle_type == VehicleType.ROVER:
-            file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/r1_rover/r1_rover.sdf.jinja'
-        elif vehicle_type == VehicleType.PLANE:
-            file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/plane/plane.sdf.jinja'
-        else:
-            raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-    else:
-        raise Exception(f"Model source {model_source.name} not supported")
+            raise Exception(f"Model source {model_source.name} not supported")
+    elif file_path == "" and model_name != "":
+        raise Exception(f"Model {model_name} could not be found for gazebo")
 
+    ld.append(
+        LogInfo(msg=[f"Spawning model: {file_path}"])
+    )
     tmp_path, robot_desc = parse_model_file(file_path, mappings)
 
-    ld = []
     # Spawns vehicle model using SDF or URDF file
     ld.append(
         Node(
@@ -337,7 +348,7 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
 
 def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
                       hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE,
-                      api=ApiType.MAVROS, model_source=SimSource.DEFAULT):
+                      api=ApiType.MAVROS, model_source=SimSource.DEFAULT, model_name=""):
     """Spawns vehicle in running gazebo world.
 
     Args:
@@ -358,50 +369,57 @@ def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, ma
                 "serial_device": serial_device,
                 "serial_baudrate": "921600",
                 "hil_mode": "1" if hil_mode else "0"}
-    pkg_robot_ignition = get_package_share_directory("robot_ignition")
-    if model_source == SimSource.ROBOT:
-        if vehicle_type == VehicleType.DRONE:
-            if api == ApiType.MAVROS:
-                file_path = f'{pkg_robot_ignition}/models/x3_mavlink/model.sdf.jinja'
-                # file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/simulation-ignition/models/x3/model.sdf'
-                # file_path = f'{os.environ["HOME"]}/.ignition/fuel/fuel.ignitionrobotics.org/openrobotics/models/construction cone/2/model.sdf'
-            elif api == ApiType.NONE:
-                file_path = f'{pkg_robot_ignition}/models/x3_ignition/model.sdf.jinja'
-                ld.append(
-                    Node(
-                        package="ros_ign_bridge", executable="parameter_bridge",
-                        arguments=[
-                            # World info
-                            f"/world/empty/pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V",
-                            # Multicopter control
-                            f"/{namespace}/gazebo/command/twist@geometry_msgs/msg/Twist]ignition.msgs.Twist",
-                            f"/{namespace}/enable@std_msgs/msg/Bool]ignition.msgs.Boolean",
-                            # Joint state publisher
-                            f"/world/empty/model/{namespace}/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model",
-                            # Odometry publisher
-                            f"/model/{namespace}/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry",
-                        ],
-                        remappings=[
-                            # World info
-                            # (f"/world/empty/pose/info"),
-                            # Multicopter control
-                            (f"/{namespace}/gazebo/command/twist", f"/{namespace}/_ign/gazebo/command/twist"),
-                            (f"/{namespace}/enable", f"/{namespace}/_ign/enable"),
-                            # Joint state publisher
-                            (f"/world/empty/model/{namespace}/joint_state", f"/{namespace}/_ign/joint_state"),
-                            # Odometry publisher
-                            (f"/model/{namespace}/odom", f"/{namespace}/_ign/odom"),
-                        ],
-                        output="screen"
+    file_path = get_model_path("IGN_GAZEBO_RESOURCE_PATH", model_name)
+    if file_path == "" and model_name == "":
+        if model_source == SimSource.ROBOT:
+            pkg_robot_ignition = get_package_share_directory("robot_ignition")
+            if vehicle_type == VehicleType.DRONE:
+                if api == ApiType.MAVROS:
+                    file_path = f'{pkg_robot_ignition}/models/x3_mavlink/model.sdf.jinja'
+                    # file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/simulation-ignition/models/x3/model.sdf'
+                    # file_path = f'{os.environ["HOME"]}/.ignition/fuel/fuel.ignitionrobotics.org/openrobotics/models/construction cone/2/model.sdf'
+                elif api == ApiType.NONE:
+                    file_path = f'{pkg_robot_ignition}/models/x3_ignition/model.sdf.jinja'
+                    ld.append(
+                        Node(
+                            package="ros_ign_bridge", executable="parameter_bridge",
+                            arguments=[
+                                # World info
+                                f"/world/empty/pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V",
+                                # Multicopter control
+                                f"/{namespace}/gazebo/command/twist@geometry_msgs/msg/Twist]ignition.msgs.Twist",
+                                f"/{namespace}/enable@std_msgs/msg/Bool]ignition.msgs.Boolean",
+                                # Joint state publisher
+                                f"/world/empty/model/{namespace}/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model",
+                                # Odometry publisher
+                                f"/model/{namespace}/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry",
+                            ],
+                            remappings=[
+                                # World info
+                                # (f"/world/empty/pose/info"),
+                                # Multicopter control
+                                (f"/{namespace}/gazebo/command/twist", f"/{namespace}/_ign/gazebo/command/twist"),
+                                (f"/{namespace}/enable", f"/{namespace}/_ign/enable"),
+                                # Joint state publisher
+                                (f"/world/empty/model/{namespace}/joint_state", f"/{namespace}/_ign/joint_state"),
+                                # Odometry publisher
+                                (f"/model/{namespace}/odom", f"/{namespace}/_ign/odom"),
+                            ],
+                            output="screen"
+                        )
                     )
-                )
+                else:
+                    raise Exception(f"Api '{api.name}' not supported for ignition drone")
             else:
-                raise Exception(f"Api '{api.name}' not supported for ignition drone")
+                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
         else:
-            raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-    else:
-        raise Exception(f"Model source {model_source.name} not supported")
+            raise Exception(f"Model source {model_source.name} not supported")
+    elif file_path == "" and model_name != "":
+        raise Exception(f"Model {model_name} could not be found for ignition")
 
+    ld.append(
+        LogInfo(msg=[f"Spawning model: {file_path}"])
+    )
     tmp_path, robot_desc = parse_model_file(file_path, mappings)
 
     # Spawns vehicle model using SDF or URDF file
@@ -446,6 +464,7 @@ def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], en
     #     return ld
     return ld
 
+
 def extract_namespaces(args):
     namespaces = args["namespaces"]
     len_ns = len(namespaces)
@@ -456,3 +475,16 @@ def extract_namespaces(args):
     if len(namespaces) != len(set(namespaces)):
         raise ValueError("Namespaces list contains duplicates")
     return namespaces
+
+
+def get_model_path(env: str, name: str):
+    path = ""
+    if name != "":
+        gz_models_paths = os.environ[env]
+        gz_models_paths = gz_models_paths.replace("::",":").split(":")
+        print(gz_models_paths)
+        for gz_path in gz_models_paths:
+            model_path = glob(os.path.join(gz_path,name,"*.sdf.*"))
+            if model_path:
+                return model_path[0]
+    return ""
