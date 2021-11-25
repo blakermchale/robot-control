@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from numpy.lib.financial import _rate_dispatcher
 from ..abstract_vehicle import AVehicle
 from ..cli.common import get_parameter_value_msg_from_type
 from ..utils.structs import Frame
