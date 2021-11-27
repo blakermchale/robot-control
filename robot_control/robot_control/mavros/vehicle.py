@@ -252,24 +252,33 @@ class Vehicle(AVehicle):
     def _send_sim_params(self):
         exe = MultiThreadedExecutor()
         exe.add_node(self)
-        self._cli_list_params = self.create_client(ListParameters, "mavros/param/list_parameters")
+        cli_list_params = self.create_client(ListParameters, "mavros/param/list_parameters")
         req = ListParameters.Request()
         sim_names = set(["NAV_RCL_ACT","COM_RCL_EXCEPT"])
         while True:
-            future = self._cli_list_params.call_async(req)
+            future = cli_list_params.call_async(req)
             exe.spin_until_future_complete(future)
             names = set(future.result().result.names)
             if sim_names.issubset(names):
                 self.get_logger().debug("Set sim params")
                 break
             self.get_logger().warn(f"Couldn't find sim params in list", throttle_duration_sec=3.0)
-        self._cli_set_params = self.create_client(SetParameters, "mavros/param/set_parameters")
+        cli_set_params = self.create_client(SetParameters, "mavros/param/set_parameters")
         req = SetParameters.Request()
         NAV_RCL_ACT = ParameterMsg(name="NAV_RCL_ACT",value=ParameterValue(type=Parameter.Type.INTEGER.value,integer_value=0))
         COM_RCL_EXCEPT = ParameterMsg(name="COM_RCL_EXCEPT",value=ParameterValue(type=Parameter.Type.INTEGER.value,integer_value=4))
         req.parameters = [NAV_RCL_ACT, COM_RCL_EXCEPT]
-        future = self._cli_set_params.call_async(req)
+        future = cli_set_params.call_async(req)
         exe.spin_until_future_complete(future)
+
+        # cli_set_params_local_pos = self.create_client(SetParameters, "mavros/local_position/set_parameters")
+        # req = SetParameters.Request()
+        # LOCAL_TF_SEND = ParameterMsg(name="tf.send",value=ParameterValue(type=Parameter.Type.BOOL.value,bool_value=True))
+        # CHILD_FRAME_ID = ParameterMsg(name="tf.child_frame_id",value=ParameterValue(type=Parameter.Type.STRING.value,string_value=self._namespace))
+        # req.parameters = [LOCAL_TF_SEND, CHILD_FRAME_ID]
+        # future = cli_set_params_local_pos.call_async(req)
+        # exe.spin_until_future_complete(future)
+
 
     ################
     ## Properties ##

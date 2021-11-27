@@ -53,6 +53,7 @@ class SimSource(IntEnum):
     NUAV=auto()
 
 
+DEFAULT_VEHICLE_YAML = os.path.join(robot_control,"config/vehicle_params.yaml")
 # Arguments with relevant info, type defaults to string
 LAUNCH_ARGS = [
     {"name": "gui",             "default": "true",              "description": "Starts gazebo gui"},
@@ -78,6 +79,7 @@ LAUNCH_ARGS = [
     {"name": "sim_source",    "default": "default",           "description": "Source for simulation.",
         "choices": [e.name.lower() for e in SimSource]},
     {"name": "model_name",    "default": "",                  "description": "Model to spawn in ignition or gazebo. Overrides sim_source."},
+    {"name": "vehicle_yaml",  "default": DEFAULT_VEHICLE_YAML, "description": "YAML file to load vehicle parameters from."}
 ]
 
 
@@ -190,7 +192,7 @@ def launch_setup(context, *args, **kwargs):
             # TODO: Figure out how to use multiple vehicles with HITL?
             ld += spawn_ign_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                     mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type,
-                                    api=api, model_source=sim_source)
+                                    api=api, model_source=sim_source, model_name=args["model_name"])
     elif sim == SimType.AIRSIM:
         ld += generate_airsim(args["hitl"], args["nb"], args["pawn_bp"], namespaces, args["environment"], log_level)
         ld.append(
@@ -259,6 +261,9 @@ def launch_setup(context, *args, **kwargs):
                     "--instance", str(i),
                     "--ros-args", "--log-level", f"{node_name}:={log_level}"
                 ],
+                parameters=[
+                    args["vehicle_yaml"],
+                ]
             ),
         )
     return ld
@@ -328,6 +333,19 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
         LogInfo(msg=[f"Spawning model: {file_path}"])
     )
     tmp_path, robot_desc = parse_model_file(file_path, mappings)
+
+    # # https://github.com/ros/sdformat_urdf 
+    # ld.append(
+    #     Node(
+    #         package='robot_state_publisher', executable='robot_state_publisher',
+    #         output='screen',
+    #         namespace=namespace,
+    #         parameters=[{
+    #             'robot_description': robot_desc if robot_desc is None else tmp_path,
+    #             'ignore_timestamp': True
+    #         }]
+    #     )
+    # )
 
     # Spawns vehicle model using SDF or URDF file
     ld.append(
@@ -482,7 +500,6 @@ def get_model_path(env: str, name: str):
     if name != "":
         gz_models_paths = os.environ[env]
         gz_models_paths = gz_models_paths.replace("::",":").split(":")
-        print(gz_models_paths)
         for gz_path in gz_models_paths:
             model_path = glob(os.path.join(gz_path,name,"*.sdf.*"))
             if model_path:

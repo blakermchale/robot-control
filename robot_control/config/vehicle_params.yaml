@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    tolerance:
+      xyz: 0.7
+      yaw: 10.0
+    static_frames:
+      realsense:
+        # use_ns: false
+        position:
+          x: 0.0
+          y: 0.0
+          z: 0.0
+        euler:
+          x: 0.0
+          y: 0.0
+          z: 0.0

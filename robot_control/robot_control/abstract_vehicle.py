@@ -2,13 +2,15 @@
 # ROS libraries
 import rclpy
 from rclpy.action import ActionServer, CancelResponse
+from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.clock import Duration
 from std_msgs.msg import Header
+from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 # ROS interfaces
-from geometry_msgs.msg import PointStamped, PoseStamped, Twist, Pose
+from geometry_msgs.msg import PointStamped, PoseStamped, Twist, Pose, TransformStamped
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Trigger
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
@@ -22,7 +24,7 @@ import numpy as np
 
 class AVehicle(Node):
     def __init__(self, instance=0):
-        super().__init__('vehicle') # start node
+        super().__init__('vehicle', allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True) # start node
         self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
         self._namespace = self.get_namespace().split("/")[-1]
@@ -60,9 +62,20 @@ class AVehicle(Node):
         self._server_follow_waypoints = ActionServer(self, FollowWaypoints, "follow_waypoints", self._handle_follow_waypoints_goal,
             cancel_callback=self._handle_follow_waypoints_cancel)
 
+        # TF
+        self._br = TransformBroadcaster(self)
+        self._static_br = StaticTransformBroadcaster(self)
+
         # ROS parameters
-        self.declare_parameter('tolerance.xyz', 0.7)
-        self.declare_parameter('tolerance.yaw', 10.0)  # degrees
+        self.declare_parameter_ez('tolerance.xyz', 0.7)
+        self.declare_parameter_ez('tolerance.yaw', 10.0)  # degrees
+        # TF parameters
+        self.declare_parameter_ez("tf.send", True)
+        self.declare_parameter_ez("tf.frame_id", "map")
+        self.declare_parameter_ez("static_tf.send", True)
+        # Static TF handler
+        if self.get_parameter("static_tf.send").value: self._publish_static_tf()
+
         self.get_logger().debug("AVehicle initialized")
 
     def update(self):
@@ -72,6 +85,8 @@ class AVehicle(Node):
         """
         self._publish_pose_odom()
         self._publish_target()
+        if self.get_parameter("tf.send").value:
+            self._publish_tf()
 
     ######################
     ## Control commands ##
@@ -320,7 +335,7 @@ class AVehicle(Node):
         msg = PointStamped()
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
-        header.frame_id = f"world"  # TODO: update frame
+        header.frame_id = self.parent_frame_id
         msg.header = header
         msg.point = get_point_from_ned(self.target.position.get_point_msg())
         self._pub_target.publish(msg)
@@ -329,7 +344,7 @@ class AVehicle(Node):
         """Publishes pose and odometry for debugging."""
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
-        header.frame_id = "world"  # TODO: update frame
+        header.frame_id = self.parent_frame_id
         # Odometry
         odom_msg = self.target_odom.get_msg()
         odom_msg.header = header
@@ -337,10 +352,6 @@ class AVehicle(Node):
         # PoseStamped
         pose_msg = PoseStamped()
         pose_msg.header = header
-        # r = R.from_quat(self.orientation)  # TODO: separate quat math to helper
-        # euler = r.as_euler('xyz')
-        # euler[2] = -euler[2]
-        # q = self.orientation  # R.from_euler('xyz', euler).as_quat()
         pose_msg.pose = odom_msg.pose.pose
         # Publish messages
         self._pub_pose.publish(pose_msg)
@@ -349,6 +360,41 @@ class AVehicle(Node):
     def _publish_state(self):
         """Publishes relevant state information. Implementation varies between vehicles."""
         raise NotImplementedError
+
+    def _publish_tf(self):
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = self.parent_frame_id
+        tf = TransformStamped()
+        tf.child_frame_id = self._namespace
+        tf.transform.translation = get_point_from_ned(self.position.get_vector3_msg())
+        tf.transform.rotation = self.orientation.get_quat_msg()
+        tf.header = header
+        self._br.sendTransform(tf)
+
+    def _publish_static_tf(self):
+        static_frames_params = self.get_parameters_by_prefix("static_frames")
+        if static_frames_params:
+            header = Header()
+            header.stamp = self.get_clock().now().to_msg()
+            header.frame_id = self._namespace
+            static_names = set([k.split(".")[0] for k in static_frames_params.keys()])
+            tf_list = []
+            for name in static_names:
+                pname = f"static_frames.{name}"
+                pos = NpVector3.dict(self.get_parameters_by_prefix(f"{pname}.position"))
+                rot = NpVector4.dict(self.get_parameters_by_prefix(f"{pname}.euler"))  # TODO: add support for quaternion
+                tf = TransformStamped()
+                tf.header = header
+                self.declare_parameter_ez(f"{pname}.use_ns", True)
+                if self.get_parameter(f"{pname}.use_ns").value:
+                    tf.child_frame_id = f"{self._namespace}/{name}"
+                else:
+                    tf.child_frame_id = name
+                tf.transform.translation = pos.get_vector3_msg()
+                tf.transform.rotation = rot.get_quat_msg()
+                tf_list.append(tf)
+            self._static_br.sendTransform(tf_list)
 
     ################
     ## Properties ##
@@ -418,6 +464,11 @@ class AVehicle(Node):
         else:
             return value
 
+    # Parameter getters
+    @property
+    def parent_frame_id(self):
+        return self.get_parameter("tf.frame_id").value
+
     #############
     ## Helpers ##
     #############
@@ -467,6 +518,9 @@ class AVehicle(Node):
         else:
             raise ValueError(f"Input frame {in_frame.name} and output frame {out_frame.name} has not been implemented")
         return vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out
+
+    def declare_parameter_ez(self, name, value):
+        if not self.has_parameter(name): self.declare_parameter(name, value)
 
 
 def get_point_from_ned(point):

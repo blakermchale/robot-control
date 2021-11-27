@@ -5,6 +5,7 @@ from geometry_msgs.msg import Point, Vector3, Quaternion, Pose, Twist
 from nav_msgs.msg import Odometry
 from robot_control_interfaces.msg import Waypoint
 from scipy.spatial.transform import Rotation as R
+from rclpy.parameter import Parameter
 
 
 class Frame(IntEnum):
@@ -45,6 +46,14 @@ class NpVector3(np.ndarray):
     @classmethod
     def xyz(cls, x, y, z) -> 'NpVector3':
         return cls.__new__(cls, [x, y, z])
+
+    @classmethod
+    def dict(cls, d) -> 'NpVector3':
+        if len(d.values()) != 3:
+            raise Exception("dictionary must be 3 values for x,y,z")
+        if isinstance(d["x"], Parameter):
+            d = {k: v.value for k,v in d.items()}
+        return cls.__new__(cls, [d["x"], d["y"], d["z"]])
 
     @property
     def x(self):
@@ -112,6 +121,23 @@ class NpVector4(np.ndarray):
     @classmethod
     def xyzw(cls, x, y, z, w) -> 'NpVector4':
         return cls.__new__(cls, [x, y, z, w])
+
+    @classmethod
+    def xyz(cls, x, y, z) -> 'NpVector4':
+        return cls.__new__(cls, R.from_euler('xyz', [x, y, z]).as_quat())
+
+    @classmethod
+    def dict(cls, d) -> 'NpVector4':
+        len_d = len(d.values())
+        if isinstance(d["x"], Parameter):
+            d = {k: v.value for k,v in d.items()}
+        if len_d == 3:
+            return cls.xyz(d["x"], d["y"], d["z"])
+        elif len_d == 4:
+            x,y,z,w = d["x"],d["y"],d["z"],d["w"]
+            return cls.xyzw(x, y, z, w)
+        else:
+            raise Exception(f"dictionary must be size 3 or 4, not {len_d}")
 
     @property
     def x(self):
