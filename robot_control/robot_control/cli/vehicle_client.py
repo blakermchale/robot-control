@@ -6,6 +6,7 @@ Vehicle Client
 Generic vehicle client to ROS2 actions and topics in companion_computing. Easy publishing, calling,
 and sending goals.
 '''
+import time
 import enum
 from typing import Any, List
 from rclpy.executors import Executor
@@ -15,7 +16,8 @@ from rclpy.task import Future
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.parameter import Parameter
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist, Pose
+from rclpy.timer import Rate
 from robot_control_interfaces.msg import Waypoint
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint, RunBT
 from std_srvs.srv import Trigger
@@ -24,6 +26,7 @@ from rcl_interfaces.msg import ParameterDescriptor, ParameterValue, ParameterTyp
 
 import functools
 from .common import get_parameter_value_msg_from_type
+from ..utils.structs import Frame, NpVector4
 
 
 class VehicleClient(Node):
@@ -40,6 +43,9 @@ class VehicleClient(Node):
         self._cli_disarm = self.create_client(Trigger, "disarm")
         self._cli_kill = self.create_client(Trigger, "kill")
         self._cli_run_tree = ActionClient(self, RunBT, "run_tree")
+        self._pub_cmd_vel = self.create_publisher(Twist, "cmd/velocity", 1)
+        self._pub_cmd_ned = self.create_publisher(Pose, "cmd/ned", 1)
+        self._pub_cmd_frd = self.create_publisher(Pose, "cmd/frd", 1)
         # ROS parameter setting and getting
         self._params_node_name = "vehicle"
         self._set_params_srvs()
@@ -193,6 +199,43 @@ class VehicleClient(Node):
         future = self._cli_desc_param.call_async(DescribeParameters.Request(names=names))
         self._executor.spin_until_future_complete(future)
         return future.result()
+
+    def publish_vel(self, vx, vy, vz, yaw_rate):
+        self.reset()
+        msg = Twist()
+        msg.linear.x = vx
+        msg.linear.y = vy
+        msg.linear.z = vz
+        msg.angular.z = yaw_rate
+        
+        try:
+            while True:
+                self._pub_cmd_vel.publish(msg)
+                time.sleep(0.1)  # TODO: don't use time, use rate from rclpy
+        except KeyboardInterrupt:
+            pass
+
+    def publish_pose(self, x: float, y: float, z: float, heading: float, frame: Frame):
+        self.reset()
+        msg = Pose()
+        msg.position.x = x
+        msg.position.y = y
+        msg.position.z = z
+        msg.orientation = NpVector4.xyz(0.,0.,heading).get_quat_msg()
+        if frame == Frame.FRD:
+            pub = self._pub_cmd_frd
+        elif frame == Frame.LOCAL_NED:
+            pub = self._pub_cmd_ned
+        else:
+            self.get_logger().error(f"Invalid frame for shell: {frame.name}")
+            return
+        try:
+            while True:
+                pub.publish(msg)
+                time.sleep(0.1)  # TODO: don't use time, use rate from rclpy
+        except KeyboardInterrupt:
+            pass
+        
 
     @property
     def params_node_name(self):

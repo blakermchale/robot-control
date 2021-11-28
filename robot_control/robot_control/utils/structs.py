@@ -120,10 +120,12 @@ class NpVector4(np.ndarray):
 
     @classmethod
     def xyzw(cls, x, y, z, w) -> 'NpVector4':
+        """Input quaternion."""
         return cls.__new__(cls, [x, y, z, w])
 
     @classmethod
     def xyz(cls, x, y, z) -> 'NpVector4':
+        """Input euler roll, pitch, yaw."""
         return cls.__new__(cls, R.from_euler('xyz', [x, y, z]).as_quat())
 
     @classmethod
@@ -138,6 +140,15 @@ class NpVector4(np.ndarray):
             return cls.xyzw(x, y, z, w)
         else:
             raise Exception(f"dictionary must be size 3 or 4, not {len_d}")
+    
+    @classmethod
+    def ros(cls, msg) -> 'NpVector4':
+        if isinstance(msg, Quaternion):
+            return cls.xyzw(msg.x, msg.y, msg.z, msg.w)
+        elif isinstance(msg, Vector3):
+            return cls.xyz(msg.x, msg.y, msg.z)
+        else:
+            raise Exception(f"Type {type(msg)} is not a supported ROS msg.")
 
     @property
     def x(self):
@@ -195,6 +206,18 @@ class NpVector4(np.ndarray):
         self.v4 = R.from_euler('xyz', value).as_quat()
 
     @property
+    def roll(self):
+        return self.euler[0]
+
+    @property
+    def pitch(self):
+        return self.euler[1]
+
+    @property
+    def yaw(self):
+        return self.euler[2]
+
+    @property
     def rot_matrix(self):
         return R.from_quat(self.v4)
     
@@ -249,6 +272,9 @@ class NpPose:
         msg.position = self.position.get_point_msg()
         msg.orientation = self.orientation.get_quat_msg()
         return msg
+
+    def copy(self) -> 'NpPose':
+        return NpPose(self.position.copy(), self.orientation.copy())
 
 
 class NpTwist:
@@ -306,6 +332,12 @@ class NpTwist:
         msg.angular = self._angular.get_vector3_msg()
         return msg
 
+    def is_zero(self) -> bool:
+        return not (self.linear.any() or self.angular.any())
+
+    def copy(self) -> 'NpTwist':
+        return NpTwist(self.linear.copy(), self.angular.copy())
+
     
 class NpOdometry:
     def __init__(self, pose: NpPose, twist: NpTwist):
@@ -361,3 +393,6 @@ class NpOdometry:
         msg.pose.pose = self.pose.get_msg()
         msg.twist.twist = self.twist.get_msg()
         return msg
+
+    def copy(self) -> 'NpOdometry':
+        return NpOdometry(self.pose.copy(), self.twist.copy())

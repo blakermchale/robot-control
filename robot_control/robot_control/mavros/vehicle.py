@@ -5,7 +5,7 @@ from ..utils.structs import Frame
 
 from mavros_msgs.srv import CommandBool, CommandLong, ParamSetV2
 from mavros_msgs.msg import State, StatusText, Altitude, PositionTarget
-from geometry_msgs.msg import PoseStamped, Quaternion
+from geometry_msgs.msg import PoseStamped, Quaternion, Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Header, String
@@ -83,8 +83,8 @@ class Vehicle(AVehicle):
         self._sub_altitude = self.create_subscription(Altitude, "mavros/altitude", self._cb_altitude, QoSPresetProfiles.SENSOR_DATA.value)
         # self._sub_pose = self.create_subscription(PoseStamped, "mavros/local_position/pose", self._cb_pose, 10)
         # Publishers
-        self._pub_setpoint_local = self.create_publisher(PoseStamped, "mavros/setpoint_position/local", 10)
-        self._pub_setpoint_local_raw = self.create_publisher(PositionTarget, "mavros/setpoint_raw/local", 10)
+        self._pub_setpoint_local_raw = self.create_publisher(PositionTarget, "mavros/setpoint_raw/local", 1)
+        self._pub_setpoint_vel_local = self.create_publisher(Twist, "mavros/setpoint_velocity/cmd_vel_unstamped", 1)
         self._pub_px4_mode = self.create_publisher(String, "mode", 10)
 
         # Set default parameters for sim
@@ -98,21 +98,36 @@ class Vehicle(AVehicle):
 
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
-        # target_pose = PoseStamped()
-        # target_pose.header = header
-        # target_pose.pose = self.target.get_msg()
-        # target_pose.pose.position.z *= -1
-        # target_pose.pose.orientation = self.target.orientation.get_quat_msg()
-        # self._pub_setpoint_local.publish(target_pose)
-        pos_target = PositionTarget()
-        pos_target.position = self.target.position.get_point_msg()
-        pos_target.position.z *= -1
-        pos_target.position.y *= -1
-        pos_target.yaw = self.target.euler.z
-        pos_target.header = header
-        pos_target.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
-        # pos_target.velocity = self.target.  # TODO: need to add velocities to target, make it odom
-        self._pub_setpoint_local_raw.publish(pos_target)
+        if self.target_odom.twist.is_zero():
+            pos_target = PositionTarget()
+            pos_target.position = self.target.position.get_point_msg()
+            pos_target.position.z *= -1
+            pos_target.position.y *= -1
+            pos_target.yaw = self.target.euler.z*-1 #FIXME: This should make the vehicle turn right not left
+            pos_target.header = header
+            pos_target.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
+            # pos_target.velocity = self.target_odom.lin_vel.get_vector3_msg()
+            # pos_target.yaw_rate = self.target_odom.ang_vel.z
+            # pos_target.velocity = self.target.  # TODO: need to add velocities to target, make it odom. tried but couldn't get it working
+            self._pub_setpoint_local_raw.publish(pos_target)
+        else:
+            # reset target odom velocities after last velocity command has gotten old
+            if self._old_time_velocity():
+                self.target_odom.lin_vel = [0.0,0.0,0.0]
+                self.target_odom.ang_vel = [0.0,0.0,0.0]
+            else:
+                self.target = self.pose.copy()
+                twist_msg = self.target_odom.twist.get_msg()
+                vx,vy,vz,_,_,yaw_rate = self.convert_velocity_frame(twist_msg.linear.x,twist_msg.linear.y,twist_msg.linear.z,
+                    twist_msg.angular.x,twist_msg.angular.y,twist_msg.angular.z,Frame.FRD,Frame.LOCAL_NED)
+                twist_msg.linear.x = vx
+                twist_msg.linear.y = vy
+                twist_msg.linear.z = vz
+                twist_msg.angular.z = yaw_rate
+                twist_msg.linear.z *= -1
+                twist_msg.linear.y *= -1
+                twist_msg.angular.z *= -1
+                self._pub_setpoint_vel_local.publish(twist_msg)
 
     ######################
     ## Control commands ##
@@ -154,6 +169,12 @@ class Vehicle(AVehicle):
         vx, vy, vz, roll_rate, pitch_rate, yaw_rate = self.convert_velocity_frame(vx, vy, vz, 0, 0, yaw_rate, frame, Frame.FRD)
         self.target_odom.lin_vel = [vx, vy, vz]
         self.target_odom.ang_vel = [roll_rate, pitch_rate, yaw_rate]
+        while not self.in_offboard():
+            if not self.set_offboard():
+                self.get_logger().error("Couldn't set offboard mode", throttle_duration_sec=2.0)
+                # return False
+            else:
+                self.get_logger().info("Set offboard", throttle_duration_sec=2.0)
         return True
 
     #####################
@@ -236,6 +257,9 @@ class Vehicle(AVehicle):
         # convert to NED
         self.position.y *= -1
         self.position.z *= -1
+        e = self.euler
+        e[2] *= -1
+        self.euler = e
 
     def _cb_global_lla(self, msg: NavSatFix):
         self._global_lla = msg

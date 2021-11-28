@@ -36,6 +36,7 @@ class AVehicle(Node):
             NpPose(NpVector3.xyz(0.0, 0.0, 0.0), NpVector4.xyzw(0.0, 0.0, 0.0, 1.0)),
             NpTwist(NpVector3.xyz(0.0, 0.0, 0.0), NpVector3.xyz(0.0, 0.0, 0.0))
         )
+        self._last_cmd_vel_time = self.get_clock().now()
         self._wait_moved = Duration(seconds=5)
 
         # Setup loop
@@ -49,7 +50,9 @@ class AVehicle(Node):
         self._pub_target = self.create_publisher(PointStamped, "target", 10)
 
         # Subscribers
-        self._sub_vel = self.create_subscription(Twist, "cmd/velocity", self._callback_velocity, 1)
+        self._sub_vel = self.create_subscription(Twist, "cmd/velocity", self._cb_velocity, 1)
+        self._sub_pose = self.create_subscription(Pose, "cmd/ned", self._cb_ned, 1)
+        self._sub_pose = self.create_subscription(Pose, "cmd/frd", self._cb_frd, 1)
 
         # Services
         self._srv_arm = self.create_service(Trigger, "arm", self._handle_arm)
@@ -312,16 +315,32 @@ class AVehicle(Node):
     #################
     ## Subscribers ##
     #################
-    def _callback_velocity(self, msg: Twist):
+    def _cb_velocity(self, msg: Twist):
         """Callback for receiving velocity commands to send to vehicle."""
         v = msg.linear
         yaw_rate = msg.angular.z
+        self._last_cmd_vel_time = self.get_clock().now()
         self._pre_callback_velocity()
         self.send_velocity(v.x, v.y, v.z, yaw_rate, Frame.FRD)
 
     def _pre_callback_velocity(self):
         """Gets called prior to velocity being sent."""
         pass
+
+    def _old_time_velocity(self) -> bool:
+        return self.get_clock().now() - self._last_cmd_vel_time > Duration(seconds=1./10.)  # tenth of 100hz, mostly arbitrary
+
+    def _cb_ned(self, msg: Pose):
+        """Callback for receiving pose commands to send to vehicle. Assumes LOCAL_NED."""
+        p = msg.position
+        yaw = NpVector4.ros(msg.orientation).yaw
+        self.send_waypoint(p.x, p.y, p.z, yaw)
+
+    def _cb_frd(self, msg: Pose):
+        """Callback for receiving pose commands to send to vehicle. Assumes FRD."""
+        p = msg.position
+        yaw = NpVector4.ros(msg.orientation).yaw
+        self.send_waypoint(p.x, p.y, p.z, yaw, Frame.FRD)
 
     ################
     ## Publishers ##
@@ -349,6 +368,10 @@ class AVehicle(Node):
         odom_msg = self.target_odom.get_msg()
         odom_msg.header = header
         odom_msg.pose.pose.position = get_point_from_ned(odom_msg.pose.pose.position)
+        q = self.orientation.copy()
+        q.euler = [q.roll,q.pitch,q.yaw*-1]
+        odom_msg.pose.pose.orientation = q.get_quat_msg()
+
         # PoseStamped
         pose_msg = PoseStamped()
         pose_msg.header = header
@@ -368,7 +391,9 @@ class AVehicle(Node):
         tf = TransformStamped()
         tf.child_frame_id = self._namespace
         tf.transform.translation = get_point_from_ned(self.position.get_vector3_msg())
-        tf.transform.rotation = self.orientation.get_quat_msg()
+        q = self.orientation.copy()
+        q.euler = [q.roll,q.pitch,q.yaw*-1]
+        tf.transform.rotation = q.get_quat_msg()
         tf.header = header
         self._br.sendTransform(tf)
 
@@ -400,7 +425,7 @@ class AVehicle(Node):
     ## Properties ##
     ################
     @property
-    def position(self):
+    def position(self) -> 'NpVector3':
         """Position in NED"""
         return self.pose.position
 
@@ -409,7 +434,7 @@ class AVehicle(Node):
         self.pose.position = self.__get_vector3(value)
 
     @property
-    def orientation(self):
+    def orientation(self) -> 'NpVector4':
         return self.pose.orientation
 
     @orientation.setter
@@ -417,7 +442,7 @@ class AVehicle(Node):
         self.pose.orientation = self.__get_vector4(value)
 
     @property
-    def euler(self):
+    def euler(self) -> 'NpVector3':
         return self.pose.orientation.euler
 
     @euler.setter
@@ -425,7 +450,7 @@ class AVehicle(Node):
         self.pose.orientation.euler = value
 
     @property
-    def lin_vel(self):
+    def lin_vel(self) -> 'NpVector3':
         return self.odom.lin_vel
 
     @lin_vel.setter
@@ -433,7 +458,7 @@ class AVehicle(Node):
         self.odom.lin_vel = self.__get_vector3(value)
 
     @property
-    def ang_vel(self):
+    def ang_vel(self) -> 'NpVector3':
         return self.odom.ang_vel
 
     @ang_vel.setter
@@ -441,11 +466,11 @@ class AVehicle(Node):
         self.odom.ang_vel = self.__get_vector3(value)
 
     @property
-    def pose(self):
+    def pose(self) -> 'NpPose':
         return self.odom.pose
 
     @property
-    def target(self):
+    def target(self) -> 'NpPose':
         return self.target_odom.pose
 
     @target.setter
@@ -491,7 +516,7 @@ class AVehicle(Node):
         Returns:
             tuple: Tuple of converted x, y, z, roll, pitch, yaw.
         """
-        self.get_logger().debug(f"Input frame {in_frame.name} and output frame {out_frame.name} being used")
+        # self.get_logger().debug(f"Input frame {in_frame.name} and output frame {out_frame.name} being used")
         if out_frame == Frame.LOCAL_NED and in_frame == Frame.FRD:
             position = self.position
             r = self.orientation.rot_matrix
@@ -499,7 +524,7 @@ class AVehicle(Node):
             p = r.apply([x, y, z])  # Transformed point
             x_out, y_out, z_out = position + p
             yaw_out = euler[2] - yaw
-            self.get_logger().debug(f"{position}, in {[x,y,z]}, out {[x_out, y_out, z_out]}")
+            # self.get_logger().debug(f"{position}, in {[x,y,z]}, out {[x_out, y_out, z_out]}")
         # elif out_frame == Frame.LOCAL_NED and in_frame == Frame.LLA:
         #     ned = np.asfarray(navpy.lla2ned(x, y, z, local_position.ref_lat, local_position.ref_lon, local_position.ref_alt))
         #     x = ned[0]
@@ -512,9 +537,13 @@ class AVehicle(Node):
         roll_out, pitch_out = roll, pitch
         return x_out, y_out, z_out, roll_out, pitch_out, yaw_out
 
-    def convert_velocity_frame(vx: float, vy:float, vz:float, roll_rate:float, pitch_rate:float, yaw_rate:float, in_frame:Frame, out_frame:Frame):
+    def convert_velocity_frame(self, vx: float, vy:float, vz:float, roll_rate:float, pitch_rate:float, yaw_rate:float, in_frame:Frame, out_frame:Frame):
         if out_frame == Frame.FRD and in_frame == Frame.FRD:
             vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out = vx, vy, vz, roll_rate, pitch_rate, yaw_rate
+        elif out_frame == Frame.LOCAL_NED and in_frame == Frame.FRD:
+            r = self.orientation.rot_matrix
+            v = r.apply([vx, vy, vz])  # Transformed point
+            vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out = v[0], v[1], v[2], roll_rate, pitch_rate, yaw_rate
         else:
             raise ValueError(f"Input frame {in_frame.name} and output frame {out_frame.name} has not been implemented")
         return vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out

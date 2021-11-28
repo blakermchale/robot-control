@@ -118,6 +118,33 @@ class DroneShell(Cmd):
         future = self.client.send_run_tree(opts.tree)
         complete_action_call(self.client, self.executor, future, "run_tree")
 
+    _pub_frd_argparser = Cmd2ArgumentParser(description='Publishes `cmd/frd` pose.')
+    _pub_frd_argparser.add_argument('x', type=float, help='x (m)')
+    _pub_frd_argparser.add_argument('y', type=float, help='y (m)')
+    _pub_frd_argparser.add_argument('z', type=float, help='z (m)')
+    _pub_frd_argparser.add_argument('yaw', type=float, help='yaw (rad)')
+    @with_argparser(_pub_frd_argparser)
+    def do_pub_frd(self, opts):
+        self.client.publish_pose(opts.x,opts.y,opts.z,opts.yaw,Frame.FRD)
+    
+    _pub_ned_argparser = Cmd2ArgumentParser(description='Publishes `cmd/ned` pose.')
+    _pub_ned_argparser.add_argument('x', type=float, help='x (m)')
+    _pub_ned_argparser.add_argument('y', type=float, help='y (m)')
+    _pub_ned_argparser.add_argument('z', type=float, help='z (m)')
+    _pub_ned_argparser.add_argument('yaw', type=float, help='yaw (rad)')
+    @with_argparser(_pub_ned_argparser)
+    def do_pub_ned(self, opts):
+        self.client.publish_pose(opts.x,opts.y,opts.z,opts.yaw,Frame.LOCAL_NED)
+
+    _pub_vel_argparser = Cmd2ArgumentParser(description='Publishes `cmd/frd` pose.')
+    _pub_vel_argparser.add_argument('vx', type=float, help='x (m/s)')
+    _pub_vel_argparser.add_argument('vy', type=float, help='y (m/s)')
+    _pub_vel_argparser.add_argument('vz', type=float, help='z (m/s)')
+    _pub_vel_argparser.add_argument('yaw_rate', type=float, help='yaw (rad/s)')
+    @with_argparser(_pub_vel_argparser)
+    def do_pub_vel(self, opts):
+        self.client.publish_vel(opts.vx,opts.vy,opts.vz,opts.yaw_rate)
+
     _set_parameters_argparser = Cmd2ArgumentParser(description="Sends `set_parameters` service.")
     _set_parameters_name_arg = _set_parameters_argparser.add_argument("name", type=str, help="Name of parameter.")
     _set_parameters_argparser.add_argument("value", help="Value of parameter.")
