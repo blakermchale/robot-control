@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import numpy as np
-from .math import angular_dist
+from ros2_utils import angular_dist
 
 
 class XYZYaw:

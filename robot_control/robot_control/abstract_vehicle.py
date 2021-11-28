@@ -16,8 +16,8 @@ from std_srvs.srv import Trigger
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from robot_control_interfaces.msg import Waypoint
 # Our libraries
-from .utils import NpPose, NpTwist, NpVector3, NpVector4, Frame, Axis, AXIS_TO_MASK, NpOdometry
-from .utils.math import angular_dist
+from ros2_utils import angular_dist, NpPose, NpTwist, NpVector3, NpVector4, Axes, AXES_TO_MASK, NpOdometry, convert_axes_from_msg, AxesFrame
+from .utils.structs import Frame
 # Common libraries
 import numpy as np
 
@@ -47,7 +47,7 @@ class AVehicle(Node):
         # Publishers
         self._pub_pose = self.create_publisher(PoseStamped, "pose", 10)
         self._pub_odom = self.create_publisher(Odometry, "odom", 10)
-        self._pub_target = self.create_publisher(PointStamped, "target", 10)
+        self._pub_target = self.create_publisher(Odometry, "target", 10)
 
         # Subscribers
         self._sub_vel = self.create_subscription(Twist, "cmd/velocity", self._cb_velocity, 1)
@@ -194,7 +194,7 @@ class AVehicle(Node):
         # self.get_logger().debug(f"distance: {distance}, angular distance: {ang_distance}", throttle_duration_sec=2.0)
         return tolerance >= distance and ang_distance <= tolerance_yaw
 
-    def has_moved(self, init_position: np.ndarray, axis: Axis = Axis.XYZ):
+    def has_moved(self, init_position: np.ndarray, axis: Axes = Axes.XYZ):
         """Determines if vehicle has moved significantly.
 
         Args:
@@ -204,7 +204,7 @@ class AVehicle(Node):
         Returns:
             bool: Whether the vehicle has moved from its initial position.
         """
-        mask = AXIS_TO_MASK[axis]
+        mask = AXES_TO_MASK[axis]
         position = self.position * mask
         init_position *= mask
         dist = np.linalg.norm(position - init_position)
@@ -351,12 +351,12 @@ class AVehicle(Node):
 
     def _publish_target(self):
         """Publishes target point."""
-        msg = PointStamped()
+        msg = self.target_odom.get_msg()
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = self.parent_frame_id
         msg.header = header
-        msg.point = get_point_from_ned(self.target.position.get_point_msg())
+        msg.pose.pose = convert_axes_from_msg(msg.pose.pose, AxesFrame.URHAND, AxesFrame.RHAND)
         self._pub_target.publish(msg)
 
     def _publish_pose_odom(self):
@@ -365,12 +365,8 @@ class AVehicle(Node):
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = self.parent_frame_id
         # Odometry
-        odom_msg = self.target_odom.get_msg()
+        odom_msg = convert_axes_from_msg(self.odom.get_msg(), AxesFrame.URHAND, AxesFrame.RHAND)
         odom_msg.header = header
-        odom_msg.pose.pose.position = get_point_from_ned(odom_msg.pose.pose.position)
-        q = self.orientation.copy()
-        q.euler = [q.roll,q.pitch,q.yaw*-1]
-        odom_msg.pose.pose.orientation = q.get_quat_msg()
 
         # PoseStamped
         pose_msg = PoseStamped()
@@ -390,10 +386,7 @@ class AVehicle(Node):
         header.frame_id = self.parent_frame_id
         tf = TransformStamped()
         tf.child_frame_id = self._namespace
-        tf.transform.translation = get_point_from_ned(self.position.get_vector3_msg())
-        q = self.orientation.copy()
-        q.euler = [q.roll,q.pitch,q.yaw*-1]
-        tf.transform.rotation = q.get_quat_msg()
+        tf.transform = convert_axes_from_msg(self.pose.get_tf_msg(), AxesFrame.URHAND, AxesFrame.RHAND)
         tf.header = header
         self._br.sendTransform(tf)
 
@@ -550,16 +543,3 @@ class AVehicle(Node):
 
     def declare_parameter_ez(self, name, value):
         if not self.has_parameter(name): self.declare_parameter(name, value)
-
-
-def get_point_from_ned(point):
-    """Converts NED ROS Point to ROS Point message.
-
-    Args:
-        north (float): north in meters
-        east (float): east in meters
-        down (float): down in meters
-    """
-    point.y *= -1
-    point.z *= -1
-    return point

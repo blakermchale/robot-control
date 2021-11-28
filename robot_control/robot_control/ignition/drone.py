@@ -1,20 +1,21 @@
 #!/usr/bin/env python
 # This package
-from robot_control import Frame, Axis
+from robot_control import Frame, Axes
 from robot_control.abstract_drone import ADrone
 from robot_control.ignition.vehicle import Vehicle
-from robot_control.utils.structs import NpTwist, NpVector3
+from ros2_utils import NpTwist, NpVector3
 # ROS libraries
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 # ROS interfaces
 from geometry_msgs.msg import Twist
+from ros2_utils import convert_axes_from_msg, AxesFrame
 from tf2_msgs.msg import TFMessage
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 from nav_msgs.msg import Odometry
 # Our libraries
-from robot_control.utils.pid_position_controller import PIDPositionController, XYZYaw
+from ..utils.pid_position_controller import PIDPositionController, XYZYaw
 # Common packages
 import numpy as np
 from argparse import ArgumentParser
@@ -72,8 +73,7 @@ class Drone(ADrone, Vehicle):
         msg = Twist()
         # Flip from NED or FRD to ignition frame
         msg = self._last_vel_cmd.get_msg()
-        msg.linear.y *= -1
-        msg.linear.z *= -1
+        msg = convert_axes_from_msg(msg, AxesFrame.URHAND, AxesFrame.RHAND)
         self._pub_ign_twist.publish(msg)
         super().update()
 

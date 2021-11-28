@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from ros2_utils import convert_axes_from_msg, AxesFrame
 from ..abstract_vehicle import AVehicle
 from ..cli.common import get_parameter_value_msg_from_type
 from ..utils.structs import Frame
@@ -124,9 +125,7 @@ class Vehicle(AVehicle):
                 twist_msg.linear.y = vy
                 twist_msg.linear.z = vz
                 twist_msg.angular.z = yaw_rate
-                twist_msg.linear.z *= -1
-                twist_msg.linear.y *= -1
-                twist_msg.angular.z *= -1
+                twist_msg = convert_axes_from_msg(twist_msg, AxesFrame.URHAND, AxesFrame.RHAND)
                 self._pub_setpoint_vel_local.publish(twist_msg)
 
     ######################
@@ -251,15 +250,7 @@ class Vehicle(AVehicle):
         self._state.from_msg(msg)
 
     def _cb_local_odom(self, msg: Odometry):
-        self.pose.set_pose(msg.pose.pose)
-        self.lin_vel.v3 = msg.twist.twist.linear
-        self.ang_vel.v3 = msg.twist.twist.angular
-        # convert to NED
-        self.position.y *= -1
-        self.position.z *= -1
-        e = self.euler
-        e[2] *= -1
-        self.euler = e
+        self.odom.set_msg(convert_axes_from_msg(msg, AxesFrame.RHAND, AxesFrame.URHAND))
 
     def _cb_global_lla(self, msg: NavSatFix):
         self._global_lla = msg

@@ -26,7 +26,8 @@ from rcl_interfaces.msg import ParameterDescriptor, ParameterValue, ParameterTyp
 
 import functools
 from .common import get_parameter_value_msg_from_type
-from ..utils.structs import Frame, NpVector4
+from ..utils.structs import Frame
+from ros2_utils import NpVector4
 
 
 class VehicleClient(Node):
@@ -221,7 +222,7 @@ class VehicleClient(Node):
         msg.position.x = x
         msg.position.y = y
         msg.position.z = z
-        msg.orientation = NpVector4.xyz(0.,0.,heading).get_quat_msg()
+        msg.orientation = NpVector4.rpy(0.,0.,heading).get_quat_msg()
         if frame == Frame.FRD:
             pub = self._pub_cmd_frd
         elif frame == Frame.LOCAL_NED:
