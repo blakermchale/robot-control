@@ -84,7 +84,7 @@ class AVehicle(Node):
     def update(self):
         """Main loop for performing vehicle checks and updates.
         
-        Should set `self.position`, `self.orientation`.
+        Should set `self.position`, `self.orientation` in method override.
         """
         self._publish_pose_odom()
         self._publish_target()

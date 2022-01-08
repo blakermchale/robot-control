@@ -119,8 +119,6 @@ def launch_setup(context, *args, **kwargs):
         raise Exception(f"API '{args['api']}' does not work with simulation '{args['sim']}'")
 
     # Choose base name according to vehicle type
-    if args['base_name'] == "":
-        args["base_name"] = args['vehicle_type']
     vehicle_type = VehicleType[args['vehicle_type'].upper()]
     sim = SimType[args['sim'].upper()]
     api = ApiType[args["api"].upper()]
@@ -489,6 +487,8 @@ def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], en
 
 
 def extract_namespaces(args):
+    if args['base_name'] == "":
+        args["base_name"] = args['vehicle_type']
     namespaces = args["namespaces"]
     len_ns = len(namespaces)
     if args["nb"] > len_ns:

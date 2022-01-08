@@ -21,14 +21,10 @@ def complete_action_call(node, executor: Type[Executor], future, action_name: st
         node.get_logger().info(f"Got result for '{action_name}'")
     executor.spin_until_future_complete(future)
     goal_handle = None
-    start_time = node.get_clock().now()
     while goal_handle is None:
-        if node.get_clock().now() - start_time > Duration(seconds=2.0):
-            msg = f"Timed out waiting for goal handle: '{action_name}'"
-            node.get_logger().error(msg)
-            return False
         executor.spin_once()
         goal_handle = node._goal_handles.get(action_name)
+    node._waiting_for_gh = False  # Makes sure goal handle is retrieved before cancelling
     gh_future = goal_handle.get_result_async()
     gh_future.add_done_callback(get_result_cb)
     executor.spin_until_future_complete(gh_future)

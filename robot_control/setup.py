@@ -24,14 +24,14 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'sitl = robot_control.sitl:main',
-            'airsim_drone = robot_control.airsim.drone:main',
-            'airsim_rover = robot_control.airsim.rover:main',
-            'mavros_drone = robot_control.mavros.drone:main',
-            'mavros_rover = robot_control.mavros.rover:main',
-            'ignition_drone = robot_control.ignition.drone:main',
-            'ignition_rover = robot_control.ignition.rover:main',
-            'shell = robot_control.cli.shell:main',
+            f'sitl = {package_name}.sitl:main',
+            f'airsim_drone = {package_name}.airsim.drone:main',
+            f'airsim_rover = {package_name}.airsim.rover:main',
+            f'mavros_drone = {package_name}.mavros.drone:main',
+            f'mavros_rover = {package_name}.mavros.rover:main',
+            f'ignition_drone = {package_name}.ignition.drone:main',
+            f'ignition_rover = {package_name}.ignition.rover:main',
+            f'shell = {package_name}.cli.shell:main',
         ],
     },
 )

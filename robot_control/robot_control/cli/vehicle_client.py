@@ -3,7 +3,7 @@
 Vehicle Client
 =======================
 
-Generic vehicle client to ROS2 actions and topics in companion_computing. Easy publishing, calling,
+Generic vehicle client to ROS2 actions and topics. Easy publishing, calling,
 and sending goals.
 '''
 import time
@@ -55,6 +55,7 @@ class VehicleClient(Node):
         self._pose = PoseStamped()
         self._poses_received = 0
         self._timeout_sec = 60.0
+        self._waiting_for_gh = False
 
         # Goal handles
         self._goal_handles = {}
@@ -259,11 +260,13 @@ class VehicleClient(Node):
     ########################
     def reset(self):
         self._goal_handles = {}
+        self._waiting_for_gh = True
 
     def _action_response(self, action_name: str, future: Future):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().error(f"Goal rejected for '{action_name}'")
+            self._waiting_for_gh = False
             return
         self.get_logger().info(f"Goal accepted for '{action_name}'")
         self._goal_handles[action_name] = goal_handle

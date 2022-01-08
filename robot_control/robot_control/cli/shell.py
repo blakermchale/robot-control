@@ -32,7 +32,7 @@ class DroneShell(Cmd):
     prompt = "> "
     intro = "Welcome to drone shell! Type ? to list commands"
     def __init__(self, name) -> None:
-        super().__init__(persistent_history_file='~/.companion_computing/cmd2_history.dat')
+        super().__init__(persistent_history_file='~/.robot_control/cmd2_history.dat')
         self.executor = MultiThreadedExecutor()
         client = DroneClient(self.executor, namespace=name)
         self.clients_archive = {name: client}
@@ -42,6 +42,9 @@ class DroneShell(Cmd):
 
     def sigint_handler(self, signum: int, _) -> None:
         cancel_futures = []
+        if self.client._waiting_for_gh:
+            print("Cannot cancel until goal is retrieved")
+            return
         for k, v in list(self.client._goal_handles.items()):
             print(f"\nCancelling `{k}`!")
             cancel_futures.append(v.cancel_goal_async())
