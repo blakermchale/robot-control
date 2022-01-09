@@ -9,9 +9,7 @@ and sending goals.
 from rclpy.action import ActionClient
 
 from robot_control_interfaces.action import ArmTakeoff, Land
-from std_srvs.srv import Trigger
 
-import functools
 from .vehicle_client import VehicleClient
 from .common import setup_send_action
 from rclpy.task import Future

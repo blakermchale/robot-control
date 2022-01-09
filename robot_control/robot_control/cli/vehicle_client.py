@@ -10,30 +10,23 @@ import time
 import enum
 from typing import Any, List
 from rclpy.executors import Executor
-from rclpy.node import Node
 from rclpy.action import ActionClient
-from rclpy.task import Future
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.parameter import Parameter
 
 from geometry_msgs.msg import PoseStamped, Twist, Pose
-from rclpy.timer import Rate
 from robot_control_interfaces.msg import Waypoint
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint, RunBT
 from std_srvs.srv import Trigger
 from rcl_interfaces.srv import SetParameters, GetParameters, ListParameters, DescribeParameters
-from rcl_interfaces.msg import ParameterDescriptor, ParameterValue, ParameterType, Parameter as ParameterMsg
+from rcl_interfaces.msg import Parameter as ParameterMsg
 
-import functools
-from .common import get_parameter_value_msg_from_type, setup_send_action
+from .common import get_parameter_value_msg_from_type, setup_send_action, NodeClient
 from ..utils.structs import Frame
 from ros2_utils import NpVector4
 
 
-class VehicleClient(Node):
+class VehicleClient(NodeClient):
     def __init__(self, executor: Executor, namespace=None):
-        super().__init__("vehicle_client", namespace=namespace)
-        self.namespace = self.get_namespace().split("/")[-1]
+        super().__init__("vehicle_client", executor, namespace=namespace)
 
         # Vehicle state
         self._sub_pose = self.create_subscription(PoseStamped, "pose", self._cb_pose, 10)
@@ -54,14 +47,6 @@ class VehicleClient(Node):
         # Internal states
         self._pose = PoseStamped()
         self._poses_received = 0
-        self._timeout_sec = 60.0
-        self._waiting_for_gh = False
-
-        # Goal handles
-        self._goal_handles = {}
-
-        self._executor = executor
-        self._executor.add_node(self)
 
         # Pre-load parameters assuming types will not change
         self._node_parameters = {}
@@ -108,7 +93,6 @@ class VehicleClient(Node):
         return send_action
 
     def send_arm(self):
-        self.reset()
         if not self._cli_arm.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -118,7 +102,6 @@ class VehicleClient(Node):
         return future.result()
 
     def send_disarm(self):
-        self.reset()
         if not self._cli_disarm.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -128,7 +111,6 @@ class VehicleClient(Node):
         return future.result()
 
     def send_kill(self):
-        self.reset()
         if not self._cli_kill.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -138,7 +120,6 @@ class VehicleClient(Node):
         return future.result()
 
     def send_set_parameter(self, name: str, value: Any):
-        self.reset()
         if not self._cli_set_param.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -151,7 +132,6 @@ class VehicleClient(Node):
         return future.result()
 
     def send_get_parameter(self, name: str):
-        self.reset()
         if not self._cli_get_param.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -162,7 +142,6 @@ class VehicleClient(Node):
         return future.result()
 
     def send_get_parameters(self, names: List[str]):
-        self.reset()
         if not self._cli_get_param.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -173,7 +152,6 @@ class VehicleClient(Node):
         return future.result()
 
     def send_list_parameters(self):
-        self.reset()
         if not self._cli_list_param.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -182,7 +160,6 @@ class VehicleClient(Node):
         return future.result()
 
     def send_describe_parameters(self, names):
-        self.reset()
         if not self._cli_desc_param.wait_for_service(timeout_sec=self._timeout_sec):
             self.get_logger().error("No service available")
             return
@@ -191,7 +168,6 @@ class VehicleClient(Node):
         return future.result()
 
     def publish_vel(self, vx, vy, vz, yaw_rate):
-        self.reset()
         msg = Twist()
         msg.linear.x = vx
         msg.linear.y = vy
@@ -206,7 +182,6 @@ class VehicleClient(Node):
             pass
 
     def publish_pose(self, x: float, y: float, z: float, heading: float, frame: Frame):
-        self.reset()
         msg = Pose()
         msg.position.x = x
         msg.position.y = y
@@ -242,22 +217,6 @@ class VehicleClient(Node):
         self._cli_get_param = self.create_client(GetParameters, f"{self.params_node_name}/get_parameters")
         self._cli_list_param = self.create_client(ListParameters, f"{self.params_node_name}/list_parameters")
         self._cli_desc_param = self.create_client(DescribeParameters, f"{self.params_node_name}/describe_parameters")
-
-    ########################
-    ## Helpers
-    ########################
-    def reset(self):
-        # self._goal_handles = {}
-        self._waiting_for_gh = True
-
-    def _action_response(self, action_name: str, future: Future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().error(f"Goal rejected for '{action_name}'")
-            self._waiting_for_gh = False
-            return
-        self.get_logger().info(f"Goal accepted for '{action_name}'")
-        self._goal_handles[action_name] = goal_handle
 
     ########################
     ## Subscribers

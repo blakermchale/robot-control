@@ -5,9 +5,8 @@ Shell
 Shell interface for calling ROS2 actions.
 '''
 import rclpy
-from cmd2 import Cmd, Cmd2ArgumentParser, with_argparser
-from rclpy.executors import MultiThreadedExecutor
-from .common import complete_action_call, check_futures_done
+from cmd2 import Cmd2ArgumentParser, with_argparser
+from .common import complete_action_call, ClientShell
 from .drone_client import DroneClient
 from ..utils.structs import Frame
 from argparse import ArgumentParser
@@ -28,46 +27,12 @@ class bcolors:
 
 # https://pymotw.com/2/cmd/
 # https://pypi.org/project/cmd2/
-class DroneShell(Cmd):
+class DroneShell(ClientShell):
     prompt = "> "
     intro = "Welcome to drone shell! Type ? to list commands"
     def __init__(self, name) -> None:
-        super().__init__(persistent_history_file='~/.robot_control/cmd2_history.dat')
-        self.executor = MultiThreadedExecutor()
-        client = DroneClient(self.executor, namespace=name)
-        self.clients_archive = {name: client}
-        self.client = client
-        self.name = name
+        super().__init__(name, DroneClient, persistent_history_file='~/.robot_control/cmd2_history.dat')
         self._update_params_choices()
-
-    def sigint_handler(self, signum: int, _) -> None:
-        cancel_futures = []
-        if self.client._waiting_for_gh:
-            print("Cannot cancel until goal is retrieved")
-            return
-        for k, v in list(self.client._goal_handles.items()):
-            cancel_futures.append(v.cancel_goal_async())
-            self.client._goal_handles.pop(k)
-            print(f"\nCancelling `{k}`!")
-        while self.executor._context.ok() and not check_futures_done(cancel_futures) and not self.executor._is_shutdown:
-            self.executor.spin_once()
-        if cancel_futures:
-            print("Finished ^C")
-        super().sigint_handler(signum, _)
-
-    _set_name_argparser = Cmd2ArgumentParser(description='Changes client to new vehicle name.')
-    _set_name_argparser.add_argument('name', type=str, help='vehicle namespace')
-    @with_argparser(_set_name_argparser)
-    def do_set_name(self, opts):
-        if opts.name not in self.clients_archive.keys():
-            self.executor = MultiThreadedExecutor()
-            self.clients_archive[opts.name] = DroneClient(self.executor, namespace=opts.name)
-        self.client = self.clients_archive[opts.name]
-        self.name = opts.name
-
-    def do_get_name(self, opts):
-        """Gets current client vehicle name."""
-        print(f"Vehicle name is '{self.client.namespace}'")
 
     _go_coord_argparser = Cmd2ArgumentParser(description='Sends `go_waypoint` action.')
     _go_coord_argparser.add_argument('x', type=float, help='x (m)')
@@ -201,18 +166,6 @@ class DroneShell(Cmd):
         self._set_params_node_name_name_arg.choices = list(node_names_d.keys())
         self._get_parameters_name_arg.choices = names
         self._set_parameters_name_arg.choices = names
-
-    def do_exit(self, args):
-        """Exit shell."""
-        print("Exiting")
-        return True
-
-    def default(self, inp):
-        if inp in ["x", "q"]:
-            return self.do_exit(inp)
-        print("Default not implemented: {}".format(inp))
-
-    do_EOF = do_exit
 
 
 def main(args=None):

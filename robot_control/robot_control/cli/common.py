@@ -14,6 +14,8 @@ from rclpy.node import Node
 import functools
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import ParameterValue
+from cmd2 import Cmd, Cmd2ArgumentParser, with_argparser
+from rclpy.executors import MultiThreadedExecutor
 
 
 class NodeClient(Node):
@@ -30,6 +32,78 @@ class NodeClient(Node):
 
         self._executor = executor
         self._executor.add_node(self)
+    
+    ########################
+    ## Helpers
+    ########################
+    def reset_actions(self):
+        # self._goal_handles = {}
+        self._waiting_for_gh = True
+
+    def _action_response(self, action_name: str, future: Future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().error(f"Goal rejected for '{action_name}'")
+            self._waiting_for_gh = False
+            return
+        self.get_logger().info(f"Goal accepted for '{action_name}'")
+        self._goal_handles[action_name] = goal_handle
+
+
+class ClientShell(Cmd):
+    """Generic client shell that handles cancelling actions. Assumes field `self.client` is set to a child of `NodeClient`."""
+    def __init__(self, name, ClientObj: NodeClient, **kwargs) -> None:
+        # print(kwargs)
+        super().__init__(**kwargs)
+        self.ClientObj = ClientObj
+        client = self.ClientObj(MultiThreadedExecutor(), namespace=name)
+        self.clients_archive = {name: client}
+        self.client = client
+        self.name = name
+
+    _set_name_argparser = Cmd2ArgumentParser(description='Changes client to new vehicle name.')
+    _set_name_argparser.add_argument('name', type=str, help='vehicle namespace')
+    @with_argparser(_set_name_argparser)
+    def do_set_name(self, opts):
+        if opts.name not in self.clients_archive.keys():
+            self.clients_archive[opts.name] = self.ClientObj(MultiThreadedExecutor(), namespace=opts.name)
+        self.client = self.clients_archive[opts.name]
+        self.name = opts.name
+
+    def do_get_name(self, opts):
+        """Gets current client vehicle name."""
+        print(f"Vehicle name is '{self.client.namespace}'")
+
+    def sigint_handler(self, signum: int, _) -> None:
+        cancel_futures = []
+        if self.client._waiting_for_gh:
+            print("Cannot cancel until goal is retrieved")
+            return
+        for k, v in list(self.client._goal_handles.items()):
+            cancel_futures.append(v.cancel_goal_async())
+            self.client._goal_handles.pop(k)
+            print(f"\nCancelling `{k}`!")
+        while self.executor._context.ok() and not check_futures_done(cancel_futures) and not self.executor._is_shutdown:
+            self.executor.spin_once()
+        if cancel_futures:
+            print("Finished ^C")
+        super().sigint_handler(signum, _)
+
+    def do_exit(self, args):
+        """Exit shell."""
+        print("Exiting")
+        return True
+
+    def default(self, inp):
+        if inp in ["x", "q"]:
+            return self.do_exit(inp)
+        print("Default not implemented: {}".format(inp))
+
+    do_EOF = do_exit
+
+    @property
+    def executor(self):
+        return self.client.executor
 
 
 def setup_send_action(self, action_cli, feedback_cb):
@@ -37,7 +111,7 @@ def setup_send_action(self, action_cli, feedback_cb):
         if action_cli._action_name in self._goal_handles:
             self.get_logger().error(f"`{action_cli._action_name}` is still being sent")
             return
-        self.reset()
+        self.reset_actions()
         if not action_cli.wait_for_server(timeout_sec=self._timeout_sec):
             self.get_logger().error(f"No action server available for `{action_cli._action_name}`")
             return
