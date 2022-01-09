@@ -90,6 +90,12 @@ class ADrone(AVehicle):
                 feedback_msg.distance = float(distance)
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
+                self.land()
+                self.get_logger().info(f'ArmTakeoff: cancelling...')
+                while not self.is_landed():
+                    continue
+                self.disarm()
+                self.get_logger().info(f'ArmTakeoff: cancelled!')
                 goal.canceled() #handle cancel action
                 self._abort_arm_takeoff()
                 return ArmTakeoff.Result()
@@ -103,12 +109,6 @@ class ADrone(AVehicle):
     def _handle_arm_takeoff_cancel(self, cancel):
         """Callback for cancelling arm_takeoff action. Must be used with ActionServer.
         """
-        self.land()
-        self.get_logger().info(f'ArmTakeoff: cancelling...')
-        while not self.is_landed():
-            continue
-        self.disarm()
-        self.get_logger().info(f'ArmTakeoff: cancelled!')
         return CancelResponse.ACCEPT
 
     # FIXME: not necessary once landed state is fixed
@@ -137,6 +137,9 @@ class ADrone(AVehicle):
                 goal.abort()
                 return Land.Result()
             if goal.is_cancel_requested:
+                self.get_logger().info('Land: cancelling...')
+                self.halt()
+                self.get_logger().info('Land: canceled!')
                 goal.canceled()
                 return Land.Result()
             if self.is_landed():
@@ -148,7 +151,4 @@ class ADrone(AVehicle):
 
     def _handle_land_cancel(self, cancel):
         """Callback for cancelling land action. Must be used with ActionServer."""
-        self.get_logger().info('Land: cancelling...')
-        self.halt()
-        self.get_logger().info('Land: canceled!')
         return CancelResponse.ACCEPT

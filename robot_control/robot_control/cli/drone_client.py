@@ -13,6 +13,7 @@ from std_srvs.srv import Trigger
 
 import functools
 from .vehicle_client import VehicleClient
+from .common import setup_send_action
 from rclpy.task import Future
 
 
@@ -32,15 +33,10 @@ class DroneClient(VehicleClient):
             Future: a Future instance to a goal handle that completes when the handle has been
                 accepted or rejected
         """
-        self.reset()
-        if not self._cli_arm_takeoff.wait_for_server(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No action server available")
-            return
-        goal = ArmTakeoff.Goal(altitude=altitude)
-        self.get_logger().info(f"Sending goal to `arm_takeoff`")
-        future = self._cli_arm_takeoff.send_goal_async(goal, feedback_callback=self._feedback_arm_takeoff)
-        future.add_done_callback(functools.partial(self._action_response, "arm_takeoff"))
-        return future
+        @setup_send_action(self, self._cli_arm_takeoff, self._feedback_arm_takeoff)
+        def send_action():
+            return ArmTakeoff.Goal(altitude=altitude)
+        return send_action
 
     def send_land(self) -> Future:
         """Sends land command to drone.
@@ -49,15 +45,10 @@ class DroneClient(VehicleClient):
             Future: a Future instance to a goal handle that completes when the handle has been
                 accepted or rejected
         """
-        self.reset()
-        if not self._cli_land.wait_for_server(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No action server available")
-            return
-        goal = Land.Goal()
-        self.get_logger().info(f"Sending goal to `land`")
-        future = self._cli_land.send_goal_async(goal)
-        future.add_done_callback(functools.partial(self._action_response, "land"))
-        return future
+        @setup_send_action(self, self._cli_land, None)
+        def send_action():
+            return Land.Goal()
+        return send_action
     
     #######################
     ## Feedback callbacks

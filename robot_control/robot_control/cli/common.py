@@ -10,13 +10,49 @@ from rclpy.duration import Duration
 from rclpy.action.client import GoalStatus
 from rclpy.executors import Executor
 from rclpy.task import Future
+from rclpy.node import Node
 import functools
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import ParameterValue
 
 
+class NodeClient(Node):
+    def __init__(self, node_name: str, executor: Executor, namespace=None):
+        super().__init__(node_name, namespace=namespace)
+        self.namespace = self.get_namespace().split("/")[-1]
+
+        # Internal states
+        self._timeout_sec = 60.0
+        self._waiting_for_gh = False
+
+        # Goal handles
+        self._goal_handles = {}
+
+        self._executor = executor
+        self._executor.add_node(self)
+
+
+def setup_send_action(self, action_cli, feedback_cb):
+    def inner(func):
+        if action_cli._action_name in self._goal_handles:
+            self.get_logger().error(f"`{action_cli._action_name}` is still being sent")
+            return
+        self.reset()
+        if not action_cli.wait_for_server(timeout_sec=self._timeout_sec):
+            self.get_logger().error(f"No action server available for `{action_cli._action_name}`")
+            return
+        goal = func()
+        self.get_logger().info(f"Sending goal to `{action_cli._action_name}`")
+        future = action_cli.send_goal_async(goal, feedback_callback=feedback_cb)
+        future.add_done_callback(functools.partial(self._action_response, action_cli._action_name))
+        return future
+    return inner
+
+
 def complete_action_call(node, executor: Type[Executor], future, action_name: str):
     """Sends single action call."""
+    if future is None:
+        return False
     def get_result_cb(future):
         node.get_logger().info(f"Got result for '{action_name}'")
     executor.spin_until_future_complete(future)
@@ -28,6 +64,7 @@ def complete_action_call(node, executor: Type[Executor], future, action_name: st
     gh_future = goal_handle.get_result_async()
     gh_future.add_done_callback(get_result_cb)
     executor.spin_until_future_complete(gh_future)
+    node._goal_handles.pop(action_name)  # remove from active handles
     if goal_handle.status == GoalStatus.STATUS_SUCCEEDED:
         node.get_logger().info(f"Succeeded at '{action_name}'!")
         return True

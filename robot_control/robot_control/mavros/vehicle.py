@@ -176,6 +176,10 @@ class Vehicle(AVehicle):
                 self.get_logger().info("Set offboard", throttle_duration_sec=2.0)
         return True
 
+    def halt(self):
+        # TODO: don't perform as hard of a stop and update waypoint as vehicle slows down so it doesn't backtrack
+        return self.send_waypoint(self.position.x, self.position.y, self.position.z, self.euler.z)
+
     #####################
     ## Checking states ##
     #####################

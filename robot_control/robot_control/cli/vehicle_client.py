@@ -25,7 +25,7 @@ from rcl_interfaces.srv import SetParameters, GetParameters, ListParameters, Des
 from rcl_interfaces.msg import ParameterDescriptor, ParameterValue, ParameterType, Parameter as ParameterMsg
 
 import functools
-from .common import get_parameter_value_msg_from_type
+from .common import get_parameter_value_msg_from_type, setup_send_action
 from ..utils.structs import Frame
 from ros2_utils import NpVector4
 
@@ -78,46 +78,34 @@ class VehicleClient(Node):
             self._node_parameters[name] = desc_params.descriptors[i]
 
     def send_go_waypoint(self, x: float, y: float, z: float, heading: float, frame):
-        self.reset()
-        if not self._cli_go_waypoint.wait_for_server(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No action server available")
-            return
-        goal = GoWaypoint.Goal()
-        goal.waypoint.frame = frame
-        goal.waypoint.heading = heading
-        goal.waypoint.position.x = x
-        goal.waypoint.position.y = y
-        goal.waypoint.position.z = z
-        self.get_logger().info("Sending goal to `go_waypoint`")
-        future = self._cli_go_waypoint.send_goal_async(goal, feedback_callback=self._feedback_go_waypoint)
-        future.add_done_callback(functools.partial(self._action_response, "go_waypoint"))
-        return future
+        @setup_send_action(self, self._cli_go_waypoint, self._feedback_go_waypoint)
+        def send_action():
+            goal = GoWaypoint.Goal()
+            goal.waypoint.frame = frame
+            goal.waypoint.heading = heading
+            goal.waypoint.position.x = x
+            goal.waypoint.position.y = y
+            goal.waypoint.position.z = z
+            return goal
+        return send_action
 
     def send_run_tree(self, behavior_tree: str):
-        self.reset()
-        if not self._cli_run_tree.wait_for_server(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No action server available")
-            return
-        goal = RunBT.Goal()
-        if behavior_tree != "":
-            goal.behavior_tree = behavior_tree
-        self.get_logger().info("Sending goal to `run_tree`")
-        future = self._cli_run_tree.send_goal_async(goal, feedback_callback=self._feedback_run_tree)
-        future.add_done_callback(functools.partial(self._action_response, "run_tree"))
-        return future
+        @setup_send_action(self, self._cli_run_tree, self._feedback_run_tree)
+        def send_action():
+            goal = RunBT.Goal()
+            if behavior_tree != "":
+                goal.behavior_tree = behavior_tree
+            return goal
+        return send_action
 
     def send_follow_waypoints(self, waypoints: List[Waypoint], tolerance: float):
-        self.reset()
-        if not self._cli_follow_waypoints.wait_for_server(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No action server available")
-            return
-        goal = FollowWaypoints.Goal()
-        goal.waypoints = waypoints
-        goal.tolerance = tolerance
-        self.get_logger().info(f"Sending goal to `follow_waypoints`")
-        future = self._cli_follow_waypoints.send_goal_async(goal, feedback_callback=self._feedback_follow_waypoints)
-        future.add_done_callback(functools.partial(self._action_response, "follow_waypoints"))
-        return future
+        @setup_send_action(self, self._cli_follow_waypoints, self._feedback_follow_waypoints)
+        def send_action():
+            goal = FollowWaypoints.Goal()
+            goal.waypoints = waypoints
+            goal.tolerance = tolerance
+            return goal
+        return send_action
 
     def send_arm(self):
         self.reset()
@@ -259,7 +247,7 @@ class VehicleClient(Node):
     ## Helpers
     ########################
     def reset(self):
-        self._goal_handles = {}
+        # self._goal_handles = {}
         self._waiting_for_gh = True
 
     def _action_response(self, action_name: str, future: Future):
@@ -289,4 +277,3 @@ class VehicleClient(Node):
 
     def _feedback_run_tree(self, feedback):
         self.get_logger().info(f"`run_tree` feedback: running for {feedback.feedback.time.sec}s", throttle_duration_sec=2.0)
-

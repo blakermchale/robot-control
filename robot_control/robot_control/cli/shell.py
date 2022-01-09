@@ -46,12 +46,13 @@ class DroneShell(Cmd):
             print("Cannot cancel until goal is retrieved")
             return
         for k, v in list(self.client._goal_handles.items()):
-            print(f"\nCancelling `{k}`!")
             cancel_futures.append(v.cancel_goal_async())
             self.client._goal_handles.pop(k)
+            print(f"\nCancelling `{k}`!")
         while self.executor._context.ok() and not check_futures_done(cancel_futures) and not self.executor._is_shutdown:
             self.executor.spin_once()
-        print("Finished ^C")
+        if cancel_futures:
+            print("Finished ^C")
         super().sigint_handler(signum, _)
 
     _set_name_argparser = Cmd2ArgumentParser(description='Changes client to new vehicle name.')

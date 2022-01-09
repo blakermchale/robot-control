@@ -253,6 +253,7 @@ class AVehicle(Node):
                 feedback_msg.distance = float(distance)
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
+                self.halt()
                 goal.canceled()  #handle cancel action
                 self._abort_go_waypoint()
                 return GoWaypoint.Result()
@@ -280,7 +281,6 @@ class AVehicle(Node):
 
     def _handle_go_waypoint_cancel(self, cancel):
         """Callback for cancelling waypoint."""
-        self.halt()
         return CancelResponse.ACCEPT
 
     def _handle_follow_waypoints_goal(self, goal: FollowWaypoints):
