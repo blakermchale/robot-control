@@ -19,12 +19,12 @@ from rclpy.executors import MultiThreadedExecutor
 
 
 class NodeClient(Node):
-    def __init__(self, node_name: str, executor: Executor, namespace=None):
-        super().__init__(node_name, namespace=namespace)
+    def __init__(self, node_name: str, executor: Executor, **kwargs):
+        super().__init__(node_name, **kwargs)
         self.namespace = self.get_namespace().split("/")[-1]
 
         # Internal states
-        self._timeout_sec = 60.0
+        self._timeout_sec = 10.0
         self._waiting_for_gh = False
 
         # Goal handles
@@ -43,13 +43,34 @@ class NodeClient(Node):
     def _action_response(self, action_name: str, future: Future):
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().error(f"Goal rejected for '{action_name}'")
             self._waiting_for_gh = False
+            self.get_logger().error(f"Goal rejected for '{action_name}'")
             return
-        self.get_logger().info(f"Goal accepted for '{action_name}'")
         self._goal_handles[action_name] = goal_handle
+        self.get_logger().info(f"Goal accepted for '{action_name}'")
 
 
+def setup_send_action(self, action_cli, feedback_cb):
+    """Decorator for sending an action with NodeClient."""
+    def inner(func):
+        if action_cli._action_name in self._goal_handles.keys():
+            self.get_logger().error(f"`{action_cli._action_name}` is still being sent")
+            return
+        self.reset_actions()
+        if not action_cli.wait_for_server(timeout_sec=self._timeout_sec):
+            self.get_logger().error(f"No action server available for `{action_cli._action_name}`")
+            return
+        goal = func()
+        self.get_logger().info(f"Sending goal to `{action_cli._action_name}`")
+        future = action_cli.send_goal_async(goal, feedback_callback=feedback_cb)
+        future.add_done_callback(functools.partial(self._action_response, action_cli._action_name))
+        return future
+    return inner
+
+
+
+# https://pymotw.com/2/cmd/
+# https://pypi.org/project/cmd2/
 class ClientShell(Cmd):
     """Generic client shell that handles cancelling actions. Assumes field `self.client` is set to a child of `NodeClient`."""
     def __init__(self, name, ClientObj: NodeClient, **kwargs) -> None:
@@ -80,13 +101,29 @@ class ClientShell(Cmd):
             print("Cannot cancel until goal is retrieved")
             return
         for k, v in list(self.client._goal_handles.items()):
+            if v.status in [GoalStatus.STATUS_CANCELED, GoalStatus.STATUS_SUCCEEDED, GoalStatus.STATUS_ABORTED]:
+                print(f"Goal `{k}` already ended, removing")
+                self.client._goal_handles.pop(k)
+                continue
             cancel_futures.append(v.cancel_goal_async())
-            self.client._goal_handles.pop(k)
             print(f"\nCancelling `{k}`!")
-        while self.executor._context.ok() and not check_futures_done(cancel_futures) and not self.executor._is_shutdown:
-            self.executor.spin_once()
+        # Wait for all cancel requests to complete and the goals to be canceled
         if cancel_futures:
-            print("Finished ^C")
+            while self.executor._context.ok() and not check_futures_done(cancel_futures) and not self.executor._is_shutdown:
+                self.executor.spin_once()
+            goal_handles = self.client._goal_handles.values()
+            gh_futures = [goal_handle.get_result_async() for goal_handle in goal_handles]
+            for goal_handle in goal_handles:
+                gh_future = goal_handle.get_result_async()
+                gh_futures.append(gh_future)
+            # Wait for goal handle futures to finish
+            while self.executor._context.ok() and not check_futures_done(gh_futures) and not self.executor._is_shutdown:
+                self.executor.spin_once()
+            if check_goal_handles_canceled(goal_handles):
+                self.client._goal_handles = {}
+                print("Finished Canceling ^C")
+            else:
+                print("Failed at Canceling ^C")
         super().sigint_handler(signum, _)
 
     def do_exit(self, args):
@@ -106,30 +143,13 @@ class ClientShell(Cmd):
         return self.client.executor
 
 
-def setup_send_action(self, action_cli, feedback_cb):
-    def inner(func):
-        if action_cli._action_name in self._goal_handles:
-            self.get_logger().error(f"`{action_cli._action_name}` is still being sent")
-            return
-        self.reset_actions()
-        if not action_cli.wait_for_server(timeout_sec=self._timeout_sec):
-            self.get_logger().error(f"No action server available for `{action_cli._action_name}`")
-            return
-        goal = func()
-        self.get_logger().info(f"Sending goal to `{action_cli._action_name}`")
-        future = action_cli.send_goal_async(goal, feedback_callback=feedback_cb)
-        future.add_done_callback(functools.partial(self._action_response, action_cli._action_name))
-        return future
-    return inner
-
-
 def complete_action_call(node, executor: Type[Executor], future, action_name: str):
     """Sends single action call."""
     if future is None:
+        node.get_logger().info(f"Action '{action_name} future is none")
         return False
     def get_result_cb(future):
         node.get_logger().info(f"Got result for '{action_name}'")
-    executor.spin_until_future_complete(future)
     goal_handle = None
     while goal_handle is None:
         executor.spin_once()
@@ -142,6 +162,7 @@ def complete_action_call(node, executor: Type[Executor], future, action_name: st
     if goal_handle.status == GoalStatus.STATUS_SUCCEEDED:
         node.get_logger().info(f"Succeeded at '{action_name}'!")
         return True
+    node.get_logger().info(f"Failed at '{action_name}' with result {goal_handle.status}...")
     return False
 
 
@@ -199,6 +220,14 @@ def check_futures_done(futures: List[Future]):
     return True
 
 
+def check_goal_handles_canceled(goal_handles: List):
+    """Checks list of goal handles for success."""
+    for goal_handle in goal_handles:
+        if goal_handle.status != GoalStatus.STATUS_CANCELED:
+            return False
+    return True
+
+
 def check_goal_handles_success(goal_handles: List):
     """Checks list of goal handles for success."""
     for goal_handle in goal_handles:
@@ -237,3 +266,15 @@ def get_parameter_value_msg_from_type(type_, value):
     elif Parameter.Type.STRING_ARRAY.value == type_:
         param_msg.string_array_value = value
     return param_msg
+
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'

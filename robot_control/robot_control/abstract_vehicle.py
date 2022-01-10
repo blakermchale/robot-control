@@ -253,9 +253,11 @@ class AVehicle(Node):
                 feedback_msg.distance = float(distance)
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
+                self.get_logger().info("GoWaypoint: canceling")
                 self.halt()
-                goal.canceled()  #handle cancel action
                 self._abort_go_waypoint()
+                goal.canceled()  #handle cancel action
+                self.get_logger().info("GoWaypoint: canceled")
                 return GoWaypoint.Result()
             if reached:
                 self.get_logger().info("GoWaypoint: reached destination")
