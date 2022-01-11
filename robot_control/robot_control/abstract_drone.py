@@ -10,6 +10,7 @@ from tf2_ros.transform_listener import TransformListener
 from tf2_ros.buffer import Buffer
 # ROS messages
 from robot_control_interfaces.action import ArmTakeoff, Land
+import numpy as np
 
 
 class ADrone(AVehicle):

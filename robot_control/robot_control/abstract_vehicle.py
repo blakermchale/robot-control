@@ -212,6 +212,19 @@ class AVehicle(Node):
         # self.get_logger().debug(f"Checking moved from {init_position}, dist: {dist} m", throttle_duration_sec=1.0)
         return dist > tolerance
 
+    def has_yawed(self, init_yaw: float):
+        """Determines if has yawed significantly.
+
+        Args:
+            init_yaw (float): Initial yaw of vehicle to compare against.
+
+        Returns:
+            bool:  Whether the vehicle has yawed.
+        """
+        dang = np.abs(self.euler.z - init_yaw)
+        tolerance = np.deg2rad(self.get_parameter('tolerance.yaw').value)
+        return dang > tolerance
+
     def is_armed(self):
         """Checks if vehicle's motors are armed.
 
@@ -240,8 +253,25 @@ class AVehicle(Node):
         feedback_msg = GoWaypoint.Feedback()
         start_time = self.get_clock().now()
         init_position = self.position.copy()
+        init_yaw = np.copy(self.euler.z)
+        # Only check for yaw or xyz movement when waypoint is commanding significant changes
+        wp_moved = self.has_moved(self.target.position.copy())
+        wp_yawed = self.has_yawed(np.copy(self.euler.z))
+        if wp_moved and wp_yawed:
+            def check_abort():
+                return not self.has_moved(init_position) or not self.has_yawed(init_yaw)
+        elif wp_moved and not wp_yawed:
+            def check_abort():
+                return not self.has_moved(init_position)
+        elif not wp_moved and wp_yawed:
+            def check_abort():
+                return not self.has_yawed(init_yaw)
+        else:
+            def check_abort():
+                return True
+        # Constantly check waypoint for success, cancel, or fail states
         while True:
-            if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
+            if self.get_clock().now() - start_time > self._wait_moved and check_abort():
                 self.get_logger().error("GoWaypoint: hasn't moved aborting")
                 goal.abort()
                 self._abort_go_waypoint()
@@ -518,7 +548,7 @@ class AVehicle(Node):
             euler = self.orientation.euler
             p = r.apply([x, y, z])  # Transformed point
             x_out, y_out, z_out = position + p
-            yaw_out = euler[2] - yaw
+            yaw_out = euler[2] + yaw
             # self.get_logger().debug(f"{position}, in {[x,y,z]}, out {[x_out, y_out, z_out]}")
         # elif out_frame == Frame.LOCAL_NED and in_frame == Frame.LLA:
         #     ned = np.asfarray(navpy.lla2ned(x, y, z, local_position.ref_lat, local_position.ref_lon, local_position.ref_alt))
@@ -538,6 +568,10 @@ class AVehicle(Node):
         elif out_frame == Frame.LOCAL_NED and in_frame == Frame.FRD:
             r = self.orientation.rot_matrix
             v = r.apply([vx, vy, vz])  # Transformed point
+            vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out = v[0], v[1], v[2], roll_rate, pitch_rate, yaw_rate
+        elif out_frame == Frame.FRD and in_frame == Frame.LOCAL_NED:
+            r = self.orientation.rot_matrix
+            v = r.apply([vx, vy, vz], inverse=True)
             vx_out, vy_out, vz_out, roll_rate_out, pitch_rate_out, yaw_rate_out = v[0], v[1], v[2], roll_rate, pitch_rate, yaw_rate
         else:
             raise ValueError(f"Input frame {in_frame.name} and output frame {out_frame.name} has not been implemented")

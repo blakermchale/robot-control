@@ -80,5 +80,7 @@ def setup():
         os.environ.get("IGN_GAZEBO_RESOURCE_PATH"),
         os.path.join(px4_ign_path, "models"),
         os.path.join(robot_ignition_path, "models"),
+        os.path.join(px4_ign_path, "worlds"),
+        os.path.join(robot_ignition_path, "worlds"),
     ]
     os.environ["IGN_GAZEBO_RESOURCE_PATH"] = combine_names(resources, ":")

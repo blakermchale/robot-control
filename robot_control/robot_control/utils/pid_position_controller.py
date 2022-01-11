@@ -70,7 +70,7 @@ class PIDPositionController:
         self.vel_cmd = XYZYaw(np.nan, np.nan, np.nan, np.nan)
         self.constraints = Constraints(max_vel_horz_abs, max_vel_vert_abs, max_yaw_rate)
 
-    def update(self):
+    def update(self) -> XYZYaw:
         self.compute_control_cmd()
         self.enforce_dynamic_constraints()
         return self.vel_cmd

@@ -401,34 +401,6 @@ def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, ma
                     # file_path = f'{os.environ["HOME"]}/.ignition/fuel/fuel.ignitionrobotics.org/openrobotics/models/construction cone/2/model.sdf'
                 elif api == ApiType.INHERENT:
                     file_path = f'{pkg_robot_ignition}/models/x3_ignition/model.sdf.jinja'
-                    ld.append(
-                        Node(
-                            package="ros_ign_bridge", executable="parameter_bridge",
-                            arguments=[
-                                # World info
-                                f"/world/empty/pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V",
-                                # Multicopter control
-                                f"/{namespace}/gazebo/command/twist@geometry_msgs/msg/Twist]ignition.msgs.Twist",
-                                f"/{namespace}/enable@std_msgs/msg/Bool]ignition.msgs.Boolean",
-                                # Joint state publisher
-                                f"/world/empty/model/{namespace}/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model",
-                                # Odometry publisher
-                                f"/model/{namespace}/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry",
-                            ],
-                            remappings=[
-                                # World info
-                                # (f"/world/empty/pose/info"),
-                                # Multicopter control
-                                (f"/{namespace}/gazebo/command/twist", f"/{namespace}/_ign/gazebo/command/twist"),
-                                (f"/{namespace}/enable", f"/{namespace}/_ign/enable"),
-                                # Joint state publisher
-                                (f"/world/empty/model/{namespace}/joint_state", f"/{namespace}/_ign/joint_state"),
-                                # Odometry publisher
-                                (f"/model/{namespace}/odom", f"/{namespace}/_ign/odom"),
-                            ],
-                            output="screen"
-                        )
-                    )
                 else:
                     raise Exception(f"Api '{api.name}' not supported for ignition drone")
             else:
@@ -437,6 +409,58 @@ def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, ma
             raise Exception(f"Model source {model_source.name} not supported")
     elif file_path == "" and model_name != "":
         raise Exception(f"Model {model_name} could not be found for ignition")
+    
+    # Exposes ignition topics to ros
+    if api == ApiType.INHERENT:
+        ld += [
+            Node(
+                package="ros_ign_bridge", executable="parameter_bridge",
+                arguments=[
+                    # World info
+                    f"/world/empty/pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V",
+                    # Multicopter control
+                    f"/{namespace}/gazebo/command/twist@geometry_msgs/msg/Twist]ignition.msgs.Twist",
+                    f"/{namespace}/enable@std_msgs/msg/Bool]ignition.msgs.Boolean",
+                    # Joint state publisher
+                    f"/world/empty/model/{namespace}/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model",
+                    # Odometry publisher
+                    f"/model/{namespace}/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry",
+                    # Realsense Camera Info
+                    f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo",
+                    # Realsense Depth Camera  TODO: don't hardcode world runway name in ign topic
+                    f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/depth_image@sensor_msgs/msg/Image[ignition.msgs.Image",
+                    # Realsense Color Camera
+                    f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/image@sensor_msgs/msg/Image[ignition.msgs.Image",
+                    # Realsense Point Cloud
+                    f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked",
+                ],
+                remappings=[
+                    # World info
+                    # (f"/world/empty/pose/info"),
+                    # Multicopter control
+                    (f"/{namespace}/gazebo/command/twist", f"/{namespace}/_ign/gazebo/command/twist"),
+                    (f"/{namespace}/enable", f"/{namespace}/_ign/enable"),
+                    # Joint state publisher
+                    (f"/world/empty/model/{namespace}/joint_state", f"/{namespace}/_ign/joint_state"),
+                    # Odometry publisher
+                    (f"/model/{namespace}/odom", f"/{namespace}/_ign/odom"),
+                    # Realsense Depth Camera
+                    (f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/depth_image", f"/{namespace}/realsense/aligned_depth_to_color/image_raw"),
+                    # (f"", f"/{namespace}/realsense/aligned_depth_to_color/image_raw/compressed"),
+                    (f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/camera_info", f"/{namespace}/realsense/aligned_depth_to_color/camera_info"),
+                    # Realsense Color Camera
+                    (f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/image", f"/{namespace}/realsense/color/image_raw"),
+                    # (f"", f"/{namespace}/realsense/color/image_raw/compressed"),
+                    # (f"", f"/{namespace}/realsense/color/camera_info")
+                    # Realsense Point Cloud
+                    (f"/world/runway/model/{namespace}/model/realsense_d435/link/link/sensor/realsense_d435/points", f"/{namespace}/realsense/depth/color/points")
+                ],
+                output="screen"
+            ),
+            Node(package="ros2_utils", executable="relay", namespace=namespace,
+                arguments=[f"realsense/aligned_depth_to_color/camera_info", f"realsense/color/camera_info"]
+            )
+        ]
 
     ld.append(
         LogInfo(msg=[f"Spawning model: {file_path}"])

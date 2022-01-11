@@ -13,6 +13,7 @@ from argparse import ArgumentParser
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import Parameter as ParameterMsg
 from pprint import pprint
+import numpy as np
 
 class bcolors:
     HEADER = '\033[95m'
@@ -38,11 +39,11 @@ class DroneShell(ClientShell):
     _go_coord_argparser.add_argument('x', type=float, help='x (m)')
     _go_coord_argparser.add_argument('y', type=float, help='y (m)')
     _go_coord_argparser.add_argument('z', type=float, help='z (m)')
-    _go_coord_argparser.add_argument('yaw', type=float, help='yaw (rad)')
+    _go_coord_argparser.add_argument('yaw', type=float, help='yaw (deg)')
     _go_coord_argparser.add_argument('frame', type=int, choices=[e.value for e in Frame], help=f'frame mapping ' + str({e.name: e.value for e in Frame}))
     @with_argparser(_go_coord_argparser)
     def do_go_wp(self, opts):
-        future = self.client.send_go_waypoint(opts.x, opts.y, opts.z, opts.yaw, opts.frame)
+        future = self.client.send_go_waypoint(opts.x, opts.y, opts.z, np.deg2rad(opts.yaw), opts.frame)
         complete_action_call(self.client, self.executor, future, "go_waypoint")
 
     # Safety wrapper to always send FRD on field, since any other could cause unknown results
@@ -50,10 +51,10 @@ class DroneShell(ClientShell):
     _go_frd_argparser.add_argument('x', type=float, help='x (m)')
     _go_frd_argparser.add_argument('y', type=float, help='y (m)')
     _go_frd_argparser.add_argument('z', type=float, help='z (m)')
-    _go_frd_argparser.add_argument('yaw', type=float, help='yaw (rad)')
+    _go_frd_argparser.add_argument('yaw', type=float, help='yaw (deg)')
     @with_argparser(_go_frd_argparser)
     def do_go_frd(self, opts):
-        future = self.client.send_go_waypoint(opts.x, opts.y, opts.z, opts.yaw, Frame.FRD)
+        future = self.client.send_go_waypoint(opts.x, opts.y, opts.z, np.deg2rad(opts.yaw), Frame.FRD)
         complete_action_call(self.client, self.executor, future, "go_waypoint")
 
     _takeoff_argparser = Cmd2ArgumentParser(description='Sends `arm_takeoff` action.')
@@ -91,19 +92,19 @@ class DroneShell(ClientShell):
     _pub_frd_argparser.add_argument('x', type=float, help='x (m)')
     _pub_frd_argparser.add_argument('y', type=float, help='y (m)')
     _pub_frd_argparser.add_argument('z', type=float, help='z (m)')
-    _pub_frd_argparser.add_argument('yaw', type=float, help='yaw (rad)')
+    _pub_frd_argparser.add_argument('yaw', type=float, help='yaw (deg)')
     @with_argparser(_pub_frd_argparser)
     def do_pub_frd(self, opts):
-        self.client.publish_pose(opts.x,opts.y,opts.z,opts.yaw,Frame.FRD)
+        self.client.publish_pose(opts.x,opts.y,opts.z,np.deg2rad(opts.yaw),Frame.FRD)
     
     _pub_ned_argparser = Cmd2ArgumentParser(description='Publishes `cmd/ned` pose.')
     _pub_ned_argparser.add_argument('x', type=float, help='x (m)')
     _pub_ned_argparser.add_argument('y', type=float, help='y (m)')
     _pub_ned_argparser.add_argument('z', type=float, help='z (m)')
-    _pub_ned_argparser.add_argument('yaw', type=float, help='yaw (rad)')
+    _pub_ned_argparser.add_argument('yaw', type=float, help='yaw (deg)')
     @with_argparser(_pub_ned_argparser)
     def do_pub_ned(self, opts):
-        self.client.publish_pose(opts.x,opts.y,opts.z,opts.yaw,Frame.LOCAL_NED)
+        self.client.publish_pose(opts.x,opts.y,opts.z,np.deg2rad(opts.yaw),Frame.LOCAL_NED)
 
     _pub_vel_argparser = Cmd2ArgumentParser(description='Publishes `cmd/frd` pose.')
     _pub_vel_argparser.add_argument('vx', type=float, help='x (m/s)')

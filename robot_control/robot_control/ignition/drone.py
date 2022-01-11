@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 # This package
-from robot_control import Frame, Axes
+from robot_control import Frame
 from robot_control.abstract_drone import ADrone
 from robot_control.ignition.vehicle import Vehicle
-from ros2_utils import NpTwist, NpVector3
 # ROS libraries
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
@@ -19,7 +18,6 @@ from ..utils.pid_position_controller import PIDPositionController, XYZYaw
 # Common packages
 import numpy as np
 from argparse import ArgumentParser
-from scipy.spatial.transform import Rotation as R
 
 
 class Drone(ADrone, Vehicle):
@@ -28,7 +26,6 @@ class Drone(ADrone, Vehicle):
         # Internal vars
         self._rotor_speeds = np.asfarray([np.nan, np.nan, np.nan, np.nan])
         self.target_valid = False  # Used for computing move to position
-        self._last_vel_cmd = NpTwist(NpVector3([0.0, 0.0, 0.0]), NpVector3([0.0, 0.0, 0.0]))  # Necessary for is_landed
         # TODO: create parameter bridges for sensor msgs like GPS
         # Subscribers
         self._sub_ign_joint_state = self.create_subscription(JointState, "_ign/joint_state", self._callback_ign_joint_state, 10)
@@ -38,13 +35,13 @@ class Drone(ADrone, Vehicle):
         self._pub_ign_enable = self.create_publisher(Bool, "_ign/enable", 1)
 
         # ROS parameters
-        self.declare_parameter("posctl.x.p", 0.6)
+        self.declare_parameter("posctl.x.p", 1.0)
         self.declare_parameter("posctl.x.d", 0.1)
-        self.declare_parameter("posctl.y.p", 0.6)
+        self.declare_parameter("posctl.y.p", 1.0)
         self.declare_parameter("posctl.y.d", 0.1)
-        self.declare_parameter("posctl.z.p", 0.6)
+        self.declare_parameter("posctl.z.p", 1.0)
         self.declare_parameter("posctl.z.d", 0.1)
-        self.declare_parameter("posctl.yaw.p", 0.6)
+        self.declare_parameter("posctl.yaw.p", 1.0)
         self.declare_parameter("posctl.yaw.d", 0.1)
         self.declare_parameter("posctl.max_vel_horz_abs", 5.0)
         self.declare_parameter("posctl.max_vel_vert_abs", 3.0)
@@ -61,10 +58,9 @@ class Drone(ADrone, Vehicle):
         if self.target_valid and not self.reached_target(0.1):
             self.pid_posctl.set_current(self.position.x, self.position.y, self.position.z, self.euler.z)
             self.pid_posctl.set_target(self.target.position.x, self.target.position.y, self.target.position.z, self.target.euler.z)
+            # self.get_logger().error(f"------------CURRENT-----------\n{self.pose}", throttle_duration_sec=0.5)
+            # self.get_logger().error(f"------------TARGET-----------\n{self.target}", throttle_duration_sec=0.5)
             vel_cmd = self.pid_posctl.update()
-            # self.get_logger().info(f"Curr error: {self.pid_posctl.curr_error}")
-            # self.get_logger().info(f"Curr pos: {self.pid_posctl.curr_position}")
-            # self.get_logger().info(f"Targ pos: {self.pid_posctl.target_position}")
             # self.get_logger().info(f"x: {vel_cmd.x}, y: {vel_cmd.y}, z: {vel_cmd.z}, yaw: {vel_cmd.yaw}", throttle_duration_sec=1.0)
             self.send_velocity(vel_cmd.x, vel_cmd.y, vel_cmd.z, vel_cmd.yaw, Frame.LOCAL_NED)
         elif self.reached_target(0.001) and self.target_valid:
@@ -72,7 +68,7 @@ class Drone(ADrone, Vehicle):
         # Publish velocity constantly
         msg = Twist()
         # Flip from NED or FRD to ignition frame
-        msg = self._last_vel_cmd.get_msg()
+        msg = self.target_odom.twist.get_msg()
         msg = convert_axes_from_msg(msg, AxesFrame.URHAND, AxesFrame.RHAND)
         self._pub_ign_twist.publish(msg)
         super().update()
@@ -121,18 +117,9 @@ class Drone(ADrone, Vehicle):
         return True
 
     def send_velocity(self, vx: float, vy: float, vz: float, yaw_rate: float, frame: Frame = Frame.FRD):
-        msg = Twist()
-        if frame == Frame.LOCAL_NED:
-            r = R.from_quat(self.orientation.v4)
-            vx, vy, vz = r.apply([vx, vy, vz])
-        elif frame == Frame.FRD:
-            pass
-        else:
-            self.get_logger().error(f"Frame {frame.name} is not supported")
-            vx, vy, vz, yaw_rate = 0.0, 0.0, 0.0, 0.0
-            return False
-        self._last_vel_cmd.linear.v3 = [vx, vy, vz]
-        self._last_vel_cmd.angular.v3 = [0.0, 0.0, yaw_rate]
+        vx, vy, vz, roll_rate, pitch_rate, yaw_rate = self.convert_velocity_frame(vx, vy, vz, 0, 0, yaw_rate, frame, Frame.FRD)
+        self.target_odom.lin_vel = [vx, vy, vz]
+        self.target_odom.ang_vel = [roll_rate, pitch_rate, yaw_rate]
         # self.get_logger().info(f"x: {vx}, y: {vy}, z: {vz}, yaw: {yaw_rate}", throttle_duration_sec=0.1)
         return True
 
@@ -176,14 +163,7 @@ class Drone(ADrone, Vehicle):
         self._rotor_speeds = np.asfarray(msg.velocity)
     
     def _callback_ign_odom(self, msg: Odometry):
-        position = msg.pose.pose.position
-        orientation = msg.pose.pose.orientation
-        lin_vel = msg.twist.twist.linear
-        ang_vel = msg.twist.twist.angular
-        self.position.v3 = [position.x, -position.y, -position.z]
-        self.orientation.v4 = orientation
-        self.lin_vel.v3 = lin_vel
-        self.ang_vel.v3 = ang_vel
+        self.odom.set_msg(convert_axes_from_msg(msg, AxesFrame.RHAND, AxesFrame.URHAND))
 
     def _abort_arm_takeoff(self):
         self._reset_pidctl()
