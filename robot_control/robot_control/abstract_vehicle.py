@@ -413,6 +413,9 @@ class AVehicle(Node):
         raise NotImplementedError
 
     def _publish_tf(self):
+        if np.any(np.isnan(self.position)):
+            self.get_logger().warn(f"Found nan in position: {self.position}", throttle_duration_sec=5.0)
+            return
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = self.parent_frame_id
