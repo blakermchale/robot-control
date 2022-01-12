@@ -104,7 +104,7 @@ class Vehicle(AVehicle):
             pos_target.position = self.target.position.get_point_msg()
             pos_target.position.z *= -1
             pos_target.position.y *= -1
-            pos_target.yaw = self.target.euler.z*-1 #FIXME: This should make the vehicle turn right not left
+            pos_target.yaw = self.target.euler.z*-1
             pos_target.header = header
             pos_target.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
             # pos_target.velocity = self.target_odom.lin_vel.get_vector3_msg()

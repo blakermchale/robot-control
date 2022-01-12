@@ -1,11 +1,15 @@
 # Example configuration file for `ROBOT_CONTROL_CONFIG`
+team_yaml: "$(env ROBOT_WS)/src/robot-control/robot_control/config/team.yaml"
 log_level: "debug"
 nb: 1
 sim: "airsim"  # gazebo, airsim, none
 # fsw and vehicle_type must be a working pair, none specifies to use the default API of that simulator
 #  some simulators do not have a default API like gazebo
-api: "none"  # none, mavros
+api: "none"  # none, mavros, inherent
 vehicle_type: "drone"
 environment: 'E:\\home\\unreal\\environments\\Blocks\\run.bat'
 # pawn_bp: "Class'/Game/NUAV/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'"
-world: "$(env PX4_AUTOPILOT)/Tools/sitl_gazebo/worlds/baylands.world"
+gz_world: "$(env PX4_AUTOPILOT)/Tools/sitl_gazebo/worlds/baylands.world"
+ign_world: "darknet.sdf"
+
+sim_source: "robot"

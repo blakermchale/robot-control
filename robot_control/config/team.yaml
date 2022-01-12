@@ -1,0 +1,8 @@
+drone_px4:
+  api: "mavros"
+  model_name: "x3_mavlink"
+  vehicle_type: "drone"
+drone_ign:
+  api: "inherent"
+  model_name: "x3_ignition_realsense"
+  vehicle_type: "drone"

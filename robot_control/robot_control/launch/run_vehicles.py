@@ -4,197 +4,95 @@ from launch_ros.parameter_descriptions import ParameterFile
 from launch.actions import IncludeLaunchDescription, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
-from ament_index_python.packages import get_package_share_directory
 import os
-from enum import IntEnum, auto
 import yaml
-from glob import glob
 
 from airsim_utils.generate_settings import create_settings, DEFAULT_PAWN_BP
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
 from airsim_utils.run_environment import run_environment
-from ros2_utils.launch import get_local_arguments, parse_model_file, combine_names
-from robot_control.launch.ignition import setup as setup_ignition
-from robot_control.launch.gazebo import setup as setup_gazebo
+from ros2_utils.launch import get_local_arguments
+from robot_control.launch.structs import ScenarioType, ROBOT_CONTROL_PKG, SimType
+from robot_control.launch.environment import LAUNCH_ARGS as ENV_LAUNCH_ARGS
+from robot_control.launch.spawn_vehicle import LAUNCH_ARGS as SPAWN_LAUNCH_ARGS
 
 
-# Get relative package directories
-robot_control = get_package_share_directory("robot_control")
-
-
-# API's and the simulators they work with
-API_PAIRS = {
-    "mavros": ["airsim", "gazebo", "ignition", "none"],
-    "inherent": ["airsim", "ignition"],
-    "none": ["airsim", "gazebo", "ignition", "none"],
-}
-
-
-class VehicleType(IntEnum):
-    DRONE = 0
-    ROVER = auto()
-    PLANE = auto()
-
-
-class SimType(IntEnum):
-    NONE = 0
-    GAZEBO = auto()
-    AIRSIM = auto()
-    IGNITION = auto()
-
-
-class ApiType(IntEnum):
-    NONE=0
-    INHERENT=auto()
-    MAVROS=auto()
-
-
-class SimSource(IntEnum):
-    DEFAULT=0
-    ROBOT=auto()
-    NUAV=auto()
-
-
-DEFAULT_VEHICLE_YAML = os.path.join(robot_control,"config/vehicle_params.yaml")
+DEFAULT_SCENARIO = ScenarioType.NONE.name.lower()
 # Arguments with relevant info, type defaults to string
 LAUNCH_ARGS = [
-    {"name": "gui",             "default": "true",              "description": "Starts gazebo gui"},
-    {"name": "verbose",         "default": "false",             "description": "Starts gazebo server with verbose outputs"},
-    {"name": "gz_world",        "default": "empty.world",       "description": "Gazebo world to load"},
-    {"name": "ign_world",       "default": "empty.sdf",         "description": "Ignition world to load"},
-    {"name": "environment",     "default": "",                  "description": "Path to executable for running AirSim environment."},
-    {"name": "pawn_bp",         "default": DEFAULT_PAWN_BP,     "description": "Pawn blueprint to spawn in AirSim."},
+    {"name": "team_yaml",     "default": "",                    "description": "Path to yaml file that contains namespaces for a vehicle and their relevant launch args. See examples/ folder."},
+    {"name": "scenario",      "default": DEFAULT_SCENARIO,      "description": "Scenario for robot. Changes types of vehicles, sensors, and environment used.",
+        "choices": [e.name.lower() for e in ScenarioType]},
     {"name": "nb",              "default": "1",                 "description": "Number of vehicles to spawn.",
         "type": "int"},
     {"name": "namespaces",      "default": "[]",                "description": "List of namespaces. Will autofill if number spawned is greater than number of items. Ex: ['drone','rover'].",
         "type": "list"},
     {"name": "base_name",       "default": "",                  "description": "Prefix for all vehicles."},
-    {"name": "log_level",       "default": "debug",             "description": "Sets log level of ros nodes."},
-    {"name": "hitl",            "default": "false",             "description": "Flag to enable HITL.",
-        "type": "bool"},
-    {"name": "sim",             "default": "gazebo",            "description": "Simulation to use.",
-        "choices": [e.name.lower() for e in SimType]},
-    {"name": "vehicle_type",    "default": "drone",             "description": "Type of vehicle to spawn.",
-        "choices": [e.name.lower() for e in VehicleType]},
-    {"name": "api",             "default": "mavros",            "description": "API to use.",
-        "choices": [e.name.lower() for e in ApiType]},
-    {"name": "sim_source",    "default": "default",           "description": "Source for simulation.",
-        "choices": [e.name.lower() for e in SimSource]},
-    {"name": "model_name",    "default": "",                  "description": "Model to spawn in ignition or gazebo. Overrides sim_source."},
-    {"name": "vehicle_yaml",  "default": DEFAULT_VEHICLE_YAML, "description": "YAML file to load vehicle parameters from."}
+    {"name": "environment",     "default": "",                  "description": "Path to executable for running AirSim environment."},
+    {"name": "pawn_bp",         "default": DEFAULT_PAWN_BP,     "description": "Pawn blueprint to spawn in AirSim."},
 ]
+# Remove launch args that cannot be generically used
+ENV_LAUNCH_ARGS = [x for x in ENV_LAUNCH_ARGS if not x["name"] in ["log_level"]]
+SPAWN_LAUNCH_ARGS = [x for x in SPAWN_LAUNCH_ARGS if not x["name"] in ["namespace", "instance", "log_level", "sim"]]
+LAUNCH_ARGS += ENV_LAUNCH_ARGS
+LAUNCH_ARGS += SPAWN_LAUNCH_ARGS
 
 
-def launch_setup(context, *args, **kwargs):
+def launch_setup(context, *largs, **kwargs):
     """Allows declaration of launch arguments within the ROS2 context
     """
-    args = get_local_arguments(LAUNCH_ARGS, context)
-
-    # Check for empty variables
-    if not os.environ.get("PX4_AUTOPILOT"):
-        raise Exception("PX4_AUTOPILOT env variable must be set")
-
     ld = []
 
     # Check for config file
+    yaml_file = ""
+    # NOTE: example ROBOT_CONTROL_CONFIG yaml file in `config/robot_control.yaml`
     if os.environ.get("ROBOT_CONTROL_CONFIG"):
         ld.append(
             LogInfo(msg=[
                 'Launching using `ROBOT_CONTROL_CONFIG` file instead of passed in arguments.'
             ])
         )
-        param_file = ParameterFile(
-            param_file=os.environ["ROBOT_CONTROL_CONFIG"],
-            allow_substs=True)
-        param_file_path = param_file.evaluate(context)
-        with open(param_file_path, 'r') as f:
-            config_vals = yaml.load(f, Loader=yaml.FullLoader)
-        # Overrides passed launch args with config files
-        for k, v in config_vals.items():
-            args[k] = v  #TODO: make sure this is the proper type
+        yaml_file = os.environ["ROBOT_CONTROL_CONFIG"]
+    largs = get_local_arguments(LAUNCH_ARGS, context, yaml_file=yaml_file)        
 
-    if args["api"] not in API_PAIRS.keys():
-        raise Exception(f"API '{args['api']}' must be specified in API_PAIRS")
-    if args["sim"] not in API_PAIRS[args["api"]]:
-        raise Exception(f"API '{args['api']}' does not work with simulation '{args['sim']}'")
-
-    # Choose base name according to vehicle type
-    vehicle_type = VehicleType[args['vehicle_type'].upper()]
-    sim = SimType[args['sim'].upper()]
-    api = ApiType[args["api"].upper()]
-    sim_source = SimSource[args["sim_source"].upper()]
-
-    if vehicle_type == VehicleType.DRONE:
-        model = "iris"
-        vehicle_exe = "drone"
-    elif vehicle_type == VehicleType.ROVER:
-        model = "r1_rover"
-        vehicle_exe = "rover"
-        raise Exception("Rover not supported yet")
-    elif vehicle_type == VehicleType.PLANE:
-        model = "plane"
-        vehicle_exe = "plane"
-        raise Exception("Plane not supported yet")
-    else:
-        raise Exception("Vehicle type needs to be specified")
+    sim = SimType[largs['sim'].upper()]
 
     # Establish log level
-    log_level = args["log_level"].upper()
+    log_level = largs["log_level"].upper()
 
-    # Pre-process namespaces
-    namespaces = extract_namespaces(args)
-
+    # Start up environment
+    env_args = [(a["name"], str(largs[a["name"]])) for a in ENV_LAUNCH_ARGS]
     ld.append(
-        LogInfo(msg=[
-            f'Spawning vehicles with namespaces "{", ".join(namespaces)}".'
-        ])
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                [ROBOT_CONTROL_PKG, os.path.sep, 'launch',
+                    os.path.sep, 'environment.launch.py']
+            ),
+            launch_arguments=env_args,
+        )
     )
 
-    # Start simulator
-    if sim == SimType.GAZEBO:
-        setup_gazebo()
+    # Spawn vehicles
+    team_yaml = largs["team_yaml"]
+    # NOTE: example team_yaml yaml file in `config/team.yaml`
+    if team_yaml != "":
         ld.append(
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    [robot_control, os.path.sep, 'launch',
-                        os.path.sep, 'gazebo.launch.py']
-                ),
-                launch_arguments={
-                    'verbose':args['verbose'],
-                    'gui': args['gui'],
-                    'world': args['gz_world']
-                }.items(),
-            )
+            LogInfo(msg=[
+                f'Using `team_yaml` file "{team_yaml}" to load vehicles.'
+            ])
         )
-        # Spawn Vehicles
-        for i, namespace in enumerate(namespaces):
-            # TODO: Figure out how to use multiple vehicles with HITL?
-            ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
-                                   mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type,
-                                   model_source=sim_source, model_name=args["model_name"])
-    elif sim == SimType.IGNITION:
-        setup_ignition()
-        ld.append(
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    [robot_control, os.path.sep, 'launch',
-                        os.path.sep, 'ignition.launch.py']
-                ),
-                launch_arguments={
-                    'verbose':args['verbose'],
-                    'gui': args['gui'],
-                    'world': args['ign_world']
-                }.items(),
-            )
-        )
-        # Spawn Vehicles
-        for i, namespace in enumerate(namespaces):
-            # TODO: Figure out how to use multiple vehicles with HITL?
-            ld += spawn_ign_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
-                                    mavlink_udp_port=14560+i, hil_mode=args["hitl"], vehicle_type=vehicle_type,
-                                    api=api, model_source=sim_source, model_name=args["model_name"])
-    elif sim == SimType.AIRSIM:
-        ld += generate_airsim(args["hitl"], args["nb"], args["pawn_bp"], namespaces, args["environment"], log_level)
+    team = get_team(largs, context)
+    ld.append(
+        LogInfo(msg=[
+            f'Spawning vehicles with namespaces "{", ".join(team.keys())}".'
+        ])
+    )
+    for spawn_args in team.values():
+        ld += add_spawn_launch(spawn_args)
+        
+
+    if sim == SimType.AIRSIM:
+        namespaces = extract_namespaces(largs)
+        ld += generate_airsim(largs["hitl"], largs["nb"], largs["pawn_bp"], namespaces, largs["environment"], log_level)
         ld.append(
             Node(
                 package='airsim_ros', executable="airsim_node",
@@ -205,288 +103,54 @@ def launch_setup(context, *args, **kwargs):
             ),
         )
 
-    # Create executable call
-    if api == ApiType.INHERENT:
-        api_exe = sim.name.lower()
-    else:
-        api_exe = api.name.lower()
-    vehicle_exe = f"{api_exe}_{vehicle_exe}"
+    return ld
 
-    for i, namespace in enumerate(namespaces):
-        if api == ApiType.MAVROS:
-            build_path=f"{os.environ['PX4_AUTOPILOT']}/build/px4_sitl_default"
-            ld.append(
-                Node(
-                    package='robot_control', executable="sitl",
-                    output='screen',
-                    namespace=namespace,
-                    arguments=[
-                        "--instance", str(i),
-                        "--build-path", build_path,
-                    ],
-                ),
-            )
-            ld.append(
-                Node(
-                    package="mavros", executable="mavros_node",
-                    output="screen",
-                    namespace=f"{namespace}/mavros",
-                    # FIXME: parameters sometimes cause crash
-                    parameters=[{
-                            "fcu_url": "udp://:14540@127.0.0.1:14557",
-                            "gcs_url": "",
-                            "target_system_id": 1,
-                            "target_component_id": 1,
-                            "fcu_protocol": "v2.0",
-                        },
-                        # os.path.join(robot_control, "config", "px4_sim_params.yaml"),
-                        # os.path.join(robot_control, "config", "px4_config.yaml"),
-                        # os.path.join(robot_control, "config", "px4_pluginlists.yaml")
-                    ]
-                )
-            )
-            # raise NotImplementedError("MAVROS api not implemented yet")
-        elif api == ApiType.INHERENT:
-            pass
-        elif api == ApiType.NONE:
-            return ld
-        else:
-            raise Exception(f"API {api.name} not supported yet")
-        # Launch vehicle executable that creates common ROS2 API
-        node_name = combine_names([namespace, "vehicle"], ".")
-        ld.append(
-            Node(
-                package='robot_control', executable=vehicle_exe,
-                output='screen',
-                namespace=namespace,
-                emulate_tty=True,
-                arguments=[
-                    "--instance", str(i),
-                    "--ros-args", "--log-level", f"{node_name}:={log_level}"
-                ],
-                parameters=[
-                    args["vehicle_yaml"],
-                ]
+
+def add_spawn_launch(spawn_args):
+    return [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                [ROBOT_CONTROL_PKG, os.path.sep, 'launch',
+                    os.path.sep, 'spawn_vehicle.launch.py']
             ),
-        )
-    return ld
-
-
-def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
-                     hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE,
-                     model_source=SimSource.DEFAULT, model_name=""):
-    """Spawns vehicle in running gazebo world.
-
-    Args:
-        namespace (str, optional): ROS namespace for all nodes. Defaults to "drone_0".
-        instance (int, optional): Instance of PX4 SITL to start. Defaults to 0.
-        mavlink_tcp_port (int, optional): TCP port to use with mavlink. Defaults to 4560.
-        mavlink_udp_port (int, optional): UDP port to use with mavlink. Defaults to 14560.
-        hil_mode (bool, optional): Flag that turns on HITL mode. Defaults to False.
-        serial_device (str, optional): Path to PX4 serial device port. Defaults to "/dev/ttyACM0".
-        model_source (SimSource, optional): Source for models to be derived from. Defaults to SimSource.DEFAULT.
-        model_name (str, optional): Name of model to find in `GAZEBO_MODEL_PATH`. If empty uses model_source to find model. Defaults to "".
-    """
-    ld = []
-    # TODO: URDF still needs to be implemented
-    # Creates tmp URDF file with frog v2
-    mappings = {"namespace": namespace,
-                "mavlink_tcp_port": mavlink_tcp_port,
-                "mavlink_udp_port": mavlink_udp_port,
-                "serial_enabled": "1" if hil_mode else "0",
-                "serial_device": serial_device,
-                "serial_baudrate": "921600",
-                "hil_mode": "1" if hil_mode else "0"}
-    file_path = get_model_path("GAZEBO_MODEL_PATH", model_name)
-    if file_path == "" and model_name == "":
-        if model_source == SimSource.NUAV:
-            pkg_nuav_gazebo = get_package_share_directory("nuav_gazebo")
-            if vehicle_type == VehicleType.DRONE:
-                mappings["camera_tilt"] = 0.0
-                mappings["include_camera"] = True
-                file_path = f'{pkg_nuav_gazebo}/models/robots/frog_v2/model.sdf.jinja'
-            elif vehicle_type == VehicleType.ROVER:
-                file_path = f'{pkg_nuav_gazebo}/models/robots/bullfrog/model.sdf.jinja'
-            elif vehicle_type == VehicleType.PLANE:
-                file_path = f'{pkg_nuav_gazebo}/models/robots/wallace/model.sdf.jinja'
-            # TODO: add carrier?
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        elif model_source == SimSource.ROBOT:
-            pkg_robot_gazebo = get_package_share_directory("robot_gazebo")
-            if vehicle_type == VehicleType.DRONE:
-                file_path = f'{pkg_robot_gazebo}/models/iris_realsense/model.sdf.jinja'
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        elif model_source == SimSource.DEFAULT:
-            if vehicle_type == VehicleType.DRONE:
-                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/iris/iris.sdf.jinja'
-            elif vehicle_type == VehicleType.ROVER:
-                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/r1_rover/r1_rover.sdf.jinja'
-            elif vehicle_type == VehicleType.PLANE:
-                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/plane/plane.sdf.jinja'
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        else:
-            raise Exception(f"Model source {model_source.name} not supported")
-    elif file_path == "" and model_name != "":
-        raise Exception(f"Model {model_name} could not be found for gazebo")
-
-    ld.append(
-        LogInfo(msg=[f"Spawning model: {file_path}"])
-    )
-    tmp_path, robot_desc = parse_model_file(file_path, mappings)
-
-    # # https://github.com/ros/sdformat_urdf 
-    # ld.append(
-    #     Node(
-    #         package='robot_state_publisher', executable='robot_state_publisher',
-    #         output='screen',
-    #         namespace=namespace,
-    #         parameters=[{
-    #             'robot_description': robot_desc if robot_desc is None else tmp_path,
-    #             'ignore_timestamp': True
-    #         }]
-    #     )
-    # )
-
-    # Spawns vehicle model using SDF or URDF file
-    ld.append(
-        Node(
-            package="gazebo_ros", executable="spawn_entity.py",
-            arguments=[
-                "-entity", namespace, "-file", tmp_path,
-                "-robot_namespace", namespace,
-                "-spawn_service_timeout", "120.0",
-                "-x", str(instance*2), "-y", str(0), "-z", str(0.15),
-                "-R", str(0.0), "-P", str(0.0), "-Y", str(0.0)
-            ],
-            output="screen"
-        )
-    )
-    return ld
-
-
-def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
-                      hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE,
-                      api=ApiType.MAVROS, model_source=SimSource.DEFAULT, model_name=""):
-    """Spawns vehicle in running gazebo world.
-
-    Args:
-        namespace (str, optional): ROS namespace for all nodes. Defaults to "drone_0".
-        instance (int, optional): Instance of PX4 SITL to start. Defaults to 0.
-        mavlink_tcp_port (int, optional): TCP port to use with mavlink. Defaults to 4560.
-        mavlink_udp_port (int, optional): UDP port to use with mavlink. Defaults to 14560.
-        hil_mode (bool, optional): Flag that turns on HITL mode. Defaults to False.
-        serial_device (str, optional): Path to PX4 serial device port. Defaults to "/dev/ttyACM0".
-    """
-    ld = []
-    # TODO: URDF still needs to be implemented
-    # Creates tmp URDF file with frog v2
-    mappings = {"namespace": namespace,
-                "mavlink_tcp_port": mavlink_tcp_port,
-                "mavlink_udp_port": mavlink_udp_port,
-                "serial_enabled": "1" if hil_mode else "0",
-                "serial_device": serial_device,
-                "serial_baudrate": "921600",
-                "hil_mode": "1" if hil_mode else "0"}
-    file_path = get_model_path("IGN_GAZEBO_RESOURCE_PATH", model_name)
-    if file_path == "" and model_name == "":
-        if model_source == SimSource.ROBOT:
-            pkg_robot_ignition = get_package_share_directory("robot_ignition")
-            if vehicle_type == VehicleType.DRONE:
-                if api == ApiType.MAVROS:
-                    file_path = f'{pkg_robot_ignition}/models/x3_mavlink/model.sdf.jinja'
-                    # file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/simulation-ignition/models/x3/model.sdf'
-                    # file_path = f'{os.environ["HOME"]}/.ignition/fuel/fuel.ignitionrobotics.org/openrobotics/models/construction cone/2/model.sdf'
-                elif api == ApiType.INHERENT:
-                    file_path = f'{pkg_robot_ignition}/models/x3_ignition/model.sdf.jinja'
-                else:
-                    raise Exception(f"Api '{api.name}' not supported for ignition drone")
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        else:
-            raise Exception(f"Model source {model_source.name} not supported")
-    elif file_path == "" and model_name != "":
-        raise Exception(f"Model {model_name} could not be found for ignition")
-    
-    # Exposes ignition topics to ros
-    bridge_args = [
-        # Realsense Camera Info
-        f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/camera_info@sensor_msgs/msg/CameraInfo[ignition.msgs.CameraInfo",
-        # Realsense Depth Camera  TODO: don't hardcode world runway name in ign topic
-        f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/depth_image@sensor_msgs/msg/Image[ignition.msgs.Image",
-        # Realsense Color Camera
-        f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/image@sensor_msgs/msg/Image[ignition.msgs.Image",
-        # Realsense Point Cloud
-        f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked",
-    ]
-    bridge_remaps = [
-        # Realsense Depth Camera
-        (f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/depth_image", f"/{namespace}/realsense/aligned_depth_to_color/image_raw"),
-        # (f"", f"/{namespace}/realsense/aligned_depth_to_color/image_raw/compressed"),
-        (f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/camera_info", f"/{namespace}/realsense/aligned_depth_to_color/camera_info"),
-        # Realsense Color Camera
-        (f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/image", f"/{namespace}/realsense/color/image_raw"),
-        # (f"", f"/{namespace}/realsense/color/image_raw/compressed"),
-        # (f"", f"/{namespace}/realsense/color/camera_info")
-        # Realsense Point Cloud
-        (f"/world/runway/model/{namespace}/link/realsense_d435/sensor/realsense_d435/points", f"/{namespace}/realsense/depth/color/points")
-    ]
-    if api == ApiType.INHERENT:
-        bridge_args += [
-            # World info
-            f"/world/empty/pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V",
-            # Multicopter control
-            f"/{namespace}/gazebo/command/twist@geometry_msgs/msg/Twist]ignition.msgs.Twist",
-            f"/{namespace}/enable@std_msgs/msg/Bool]ignition.msgs.Boolean",
-            # Joint state publisher
-            f"/world/empty/model/{namespace}/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model",
-            # Odometry publisher
-            f"/model/{namespace}/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry",
-        ]
-        bridge_remaps += [
-            # World info
-            # (f"/world/empty/pose/info"),
-            # Multicopter control
-            (f"/{namespace}/gazebo/command/twist", f"/{namespace}/_ign/gazebo/command/twist"),
-            (f"/{namespace}/enable", f"/{namespace}/_ign/enable"),
-            # Joint state publisher
-            (f"/world/empty/model/{namespace}/joint_state", f"/{namespace}/_ign/joint_state"),
-            # Odometry publisher
-            (f"/model/{namespace}/odom", f"/{namespace}/_ign/odom"),
-        ]
-    ld += [
-        Node(
-            package="ros_ign_bridge", executable="parameter_bridge",
-            arguments=bridge_args,
-            remappings=bridge_remaps,
-            output="screen"
-        ),
-        Node(package="ros2_utils", executable="relay", namespace=namespace,
-            arguments=[f"realsense/aligned_depth_to_color/camera_info", f"realsense/color/camera_info"]
+            launch_arguments=spawn_args.items(),
         )
     ]
 
-    ld.append(
-        LogInfo(msg=[f"Spawning model: {file_path}"])
-    )
-    tmp_path, robot_desc = parse_model_file(file_path, mappings)
 
-    # Spawns vehicle model using SDF or URDF file
-    ld.append(
-        Node(
-            package="ros_ign_gazebo", executable="create",
-            arguments=[
-                "-file", tmp_path,
-                "-name", namespace,    
-                "-x", str(instance*2), "-y", str(0), "-z", str(0.15),
-                "-R", str(0.0), "-P", str(0.0), "-Y", str(0.0)
-            ],
-            output="screen"
-        )
-    )
-    return ld
+def get_team(largs, context):
+    """Gets a dictionary of all vehicles being spawned and their fields."""
+    default_spawn_args = {a["name"]: str(largs[a["name"]]) for a in SPAWN_LAUNCH_ARGS}
+    team_yaml = largs["team_yaml"]
+    team = {}
+    if team_yaml != "":
+        param_file = ParameterFile(
+            param_file=team_yaml,
+            allow_substs=True)
+        param_file_path = param_file.evaluate(context)
+        with open(param_file_path, 'r') as f:
+            config_vals = yaml.load(f, Loader=yaml.FullLoader)
+        # Overrides passed launch args with config files
+        for i, (namespace, v) in enumerate(config_vals.items()):
+            spawn_args = default_spawn_args.copy()
+            spawn_args["namespace"] = namespace
+            spawn_args["instance"] = str(i)
+            if not isinstance(v, dict):
+                raise ValueError(f"'{namespace}' invalid. Team yaml must contain a nested dictionary associated with each namespace.")
+            for name, value in v.items():
+                # Forces it to be a spawn launch arg
+                if name in spawn_args:
+                    spawn_args[name] = value
+            team[namespace] = spawn_args
+    else:
+        # Pre-process namespaces
+        namespaces = extract_namespaces(largs)
+        for i, namespace in enumerate(namespaces):
+            spawn_args = default_spawn_args.copy()
+            spawn_args["namespace"] = namespace
+            spawn_args["instance"] = str(i)
+            team[namespace] = spawn_args
+    return team
 
 
 def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], environment="", log_level="DEBUG"):
@@ -528,15 +192,3 @@ def extract_namespaces(args):
     if len(namespaces) != len(set(namespaces)):
         raise ValueError("Namespaces list contains duplicates")
     return namespaces
-
-
-def get_model_path(env: str, name: str):
-    path = ""
-    if name != "":
-        gz_models_paths = os.environ[env]
-        gz_models_paths = gz_models_paths.replace("::",":").split(":")
-        for gz_path in gz_models_paths:
-            model_path = glob(os.path.join(gz_path,name,"*.sdf.*"))
-            if model_path:
-                return model_path[0]
-    return ""
