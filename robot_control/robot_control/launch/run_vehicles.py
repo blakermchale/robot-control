@@ -31,13 +31,12 @@ LAUNCH_ARGS = [
     {"name": "pawn_bp",         "default": DEFAULT_PAWN_BP,     "description": "Pawn blueprint to spawn in AirSim."},
 ]
 # Remove launch args that cannot be generically used
-ENV_LAUNCH_ARGS = [x for x in ENV_LAUNCH_ARGS if not x["name"] in ["log_level"]]
 SPAWN_LAUNCH_ARGS = [x for x in SPAWN_LAUNCH_ARGS if not x["name"] in ["namespace", "instance", "log_level", "sim"]]
 LAUNCH_ARGS += ENV_LAUNCH_ARGS
 LAUNCH_ARGS += SPAWN_LAUNCH_ARGS
 
 
-def launch_setup(context, *largs, **kwargs):
+def launch_setup(context, *args, **kwargs):
     """Allows declaration of launch arguments within the ROS2 context
     """
     ld = []
@@ -120,9 +119,9 @@ def add_spawn_launch(spawn_args):
     ]
 
 
-def get_team(largs, context):
+def get_team(largs, context, default_team_args=SPAWN_LAUNCH_ARGS):
     """Gets a dictionary of all vehicles being spawned and their fields."""
-    default_spawn_args = {a["name"]: str(largs[a["name"]]) for a in SPAWN_LAUNCH_ARGS}
+    default_spawn_args = {a["name"]: str(largs[a["name"]]) for a in default_team_args}
     team_yaml = largs["team_yaml"]
     team = {}
     if team_yaml != "":
@@ -140,9 +139,9 @@ def get_team(largs, context):
             if not isinstance(v, dict):
                 raise ValueError(f"'{namespace}' invalid. Team yaml must contain a nested dictionary associated with each namespace.")
             for name, value in v.items():
-                # Forces it to be a spawn launch arg
-                if name in spawn_args:
-                    spawn_args[name] = value
+                # # Forces it to be a spawn launch arg
+                # if name in spawn_args:
+                spawn_args[name] = value
             team[namespace] = spawn_args
     else:
         # Pre-process namespaces

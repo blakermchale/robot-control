@@ -4,6 +4,7 @@ from launch.actions import LogInfo
 
 import os
 from glob import glob
+import numpy as np
 
 from ros2_utils.launch import get_local_arguments, parse_model_file, combine_names
 from robot_control.launch.ignition import setup as setup_ignition
@@ -23,16 +24,29 @@ DEFAULT_VEHICLE_YAML = os.path.join(ROBOT_CONTROL_PKG,"config/vehicle_params.yam
 LAUNCH_ARGS = [
     # BASE INPUTS
     {"name": "namespace",       "default": "",                   "description": "Vehicle namespace. Will autofill if not given. Ex: drone_0."},
-    {"name": "log_level",       "default": "debug",             "description": "Sets log level of ros nodes."},
-    {"name": "sim",             "default": "gazebo",            "description": "Simulation being used.",
+    {"name": "log_level",       "default": "debug",              "description": "Sets log level of ros nodes."},
+    {"name": "sim",             "default": "gazebo",             "description": "Simulation being used.",
         "choices": [e.name.lower() for e in SimType]},
-    {"name": "vehicle_type",    "default": "drone",             "description": "Type of vehicle to spawn.",
+    {"name": "vehicle_type",    "default": "drone",              "description": "Type of vehicle to spawn.",
         "choices": [e.name.lower() for e in VehicleType]},
-    {"name": "model_name",    "default": "",                    "description": "Model to spawn in ignition or gazebo. Overrides sim_source."},
-    {"name": "vehicle_yaml",  "default": DEFAULT_VEHICLE_YAML,  "description": "YAML file to load vehicle parameters from."},
-    {"name": "camera",        "default": "false",               "description": "Flag indicating whether to use a camera."},
-    {"name": "api",             "default": "mavros",            "description": "API to use.",
+    {"name": "model_name",      "default": "",                   "description": "Model to spawn in ignition or gazebo. Overrides sim_source."},
+    {"name": "vehicle_yaml",    "default": DEFAULT_VEHICLE_YAML, "description": "YAML file to load vehicle parameters from."},
+    {"name": "camera",          "default": "false",              "description": "Flag indicating whether to use a camera."},
+    {"name": "api",             "default": "mavros",             "description": "API to use.",
         "choices": [e.name.lower() for e in ApiType]},
+    {"name": "x",               "default": "nan",                "description": "X position (m)",
+        "type": "float"},
+    {"name": "y",               "default": "nan",                "description": "Y position (m)",
+        "type": "float"},
+    {"name": "z",               "default": "nan",                "description": "Z position (m)",
+        "type": "float"},
+    {"name": "roll",            "default": "0.0",                "description": "Roll angle (deg)",
+        "type": "float"},
+    {"name": "pitch",           "default": "0.0",                "description": "Pitch angle (deg)",
+        "type": "float"},
+    {"name": "yaw",             "default": "0.0",                "description": "Yaw angle (deg)",
+        "type": "float"},
+
     # MAVROS
     {"name": "hitl",            "default": "false",             "description": "Flag to enable HITL.",
         "type": "bool"},
@@ -102,17 +116,26 @@ def launch_setup(context, *largs, **kwargs):
     log_level = largs["log_level"].upper()
 
     # Spawn vehicle in sim
+    x, y, z, roll, pitch, yaw = largs["x"], largs["y"], largs["z"], largs["roll"], largs["pitch"], largs["yaw"]
+    roll = np.deg2rad(roll)
+    pitch = np.deg2rad(pitch)
+    yaw = np.deg2rad(yaw)
+    if np.isnan(x): x = 0.0
+    if np.isnan(y): y = int(i)*2
+    if np.isnan(z): z = 0.15
     if sim == SimType.GAZEBO:
         setup_gazebo()
         ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                 mavlink_udp_port=14560+i, hil_mode=largs["hitl"], vehicle_type=vehicle_type,
-                                model_source=sim_source, model_name=largs["model_name"])
+                                model_source=sim_source, model_name=largs["model_name"], x=x, y=y, z=z,
+                                roll=roll, pitch=pitch, yaw=yaw)
     elif sim == SimType.IGNITION:
         setup_ignition()
         # TODO: Figure out how to use multiple vehicles with HITL?
         ld += spawn_ign_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                 mavlink_udp_port=14560+i, hil_mode=largs["hitl"], vehicle_type=vehicle_type,
-                                api=api, model_source=sim_source, model_name=largs["model_name"])
+                                api=api, model_source=sim_source, model_name=largs["model_name"], x=x, y=y, z=z,
+                                roll=roll, pitch=pitch, yaw=yaw)
     elif sim == SimType.AIRSIM:
         ld.append(
             LogInfo(msg=[f"AirSim should be started from outside launch, assuming it is..."])
@@ -202,7 +225,8 @@ GZ_MODEL_LIST = {
 }
 def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
                      hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type:VehicleType=VehicleType.DRONE,
-                     model_source:SimSource=SimSource.DEFAULT, model_name=""):
+                     model_source:SimSource=SimSource.DEFAULT, model_name="", x=0.0, y=0.0, z=0.0,
+                     roll=0.0, pitch=0.0, yaw=0.0):
     """Spawns vehicle in running gazebo world.
 
     Args:
@@ -263,8 +287,8 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
                 "-entity", namespace, "-file", tmp_path,
                 "-robot_namespace", namespace,
                 "-spawn_service_timeout", "120.0",
-                "-x", str(instance*2), "-y", str(0), "-z", str(0.15),
-                "-R", str(0.0), "-P", str(0.0), "-Y", str(0.0)
+                "-x", str(x), "-y", str(y), "-z", str(z),
+                "-R", str(roll), "-P", str(pitch), "-Y", str(yaw)
             ],
             output="screen"
         )
@@ -283,7 +307,8 @@ IGN_MODEL_LIST = {
 }
 def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
                       hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE,
-                      api=ApiType.MAVROS, model_source=SimSource.DEFAULT, model_name=""):
+                      api=ApiType.MAVROS, model_source=SimSource.DEFAULT, model_name="", x=0.0, y=0.0, z=0.0,
+                     roll=0.0, pitch=0.0, yaw=0.0):
     """Spawns vehicle in running gazebo world.
 
     Args:
@@ -386,8 +411,8 @@ def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, ma
             arguments=[
                 "-file", tmp_path,
                 "-name", namespace,    
-                "-x", str(0), "-y", str(instance*2), "-z", str(0.15),
-                "-R", str(0.0), "-P", str(0.0), "-Y", str(0.0)
+                "-x", str(x), "-y", str(y), "-z", str(z),
+                "-R", str(roll), "-P", str(pitch), "-Y", str(yaw)
             ],
             output="screen"
         )
