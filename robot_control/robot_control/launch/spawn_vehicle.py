@@ -2,7 +2,6 @@
 from launch_ros.actions import Node
 from launch.actions import LogInfo
 
-from ament_index_python.packages import get_package_share_directory
 import os
 from glob import glob
 
@@ -102,10 +101,9 @@ def launch_setup(context, *largs, **kwargs):
     # Establish log level
     log_level = largs["log_level"].upper()
 
-    # Start simulator
+    # Spawn vehicle in sim
     if sim == SimType.GAZEBO:
         setup_gazebo()
-        # TODO: Figure out how to use multiple vehicles with HITL?
         ld += spawn_gz_vehicle(namespace=namespace, instance=i, mavlink_tcp_port=4560+i,
                                 mavlink_udp_port=14560+i, hil_mode=largs["hitl"], vehicle_type=vehicle_type,
                                 model_source=sim_source, model_name=largs["model_name"])
@@ -186,9 +184,25 @@ def launch_setup(context, *largs, **kwargs):
     return ld
 
 
+# Sources and their default models
+GZ_MODEL_LIST = {
+    SimSource.ROBOT.name: {
+        VehicleType.DRONE.name: 'iris_realsense',
+    },
+    SimSource.NUAV.name: {
+        VehicleType.DRONE.name: 'frog_v2',
+        VehicleType.ROVER.name: 'bullfrog',
+        VehicleType.PLANE.name: 'wallace',
+    },
+    SimSource.DEFAULT.name: {
+        VehicleType.DRONE.name: 'iris',
+        VehicleType.ROVER.name: 'r1_rover',
+        VehicleType.PLANE.name: 'iris_realsense',
+    }
+}
 def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
-                     hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE,
-                     model_source=SimSource.DEFAULT, model_name=""):
+                     hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type:VehicleType=VehicleType.DRONE,
+                     model_source:SimSource=SimSource.DEFAULT, model_name=""):
     """Spawns vehicle in running gazebo world.
 
     Args:
@@ -211,39 +225,16 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
                 "serial_device": serial_device,
                 "serial_baudrate": "921600",
                 "hil_mode": "1" if hil_mode else "0"}
-    file_path = get_model_path("GAZEBO_MODEL_PATH", model_name)
-    if file_path == "" and model_name == "":
-        if model_source == SimSource.NUAV:
-            pkg_nuav_gazebo = get_package_share_directory("nuav_gazebo")
-            if vehicle_type == VehicleType.DRONE:
-                mappings["camera_tilt"] = 0.0
-                mappings["include_camera"] = True
-                file_path = f'{pkg_nuav_gazebo}/models/robots/frog_v2/model.sdf.jinja'
-            elif vehicle_type == VehicleType.ROVER:
-                file_path = f'{pkg_nuav_gazebo}/models/robots/bullfrog/model.sdf.jinja'
-            elif vehicle_type == VehicleType.PLANE:
-                file_path = f'{pkg_nuav_gazebo}/models/robots/wallace/model.sdf.jinja'
-            # TODO: add carrier?
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        elif model_source == SimSource.ROBOT:
-            pkg_robot_gazebo = get_package_share_directory("robot_gazebo")
-            if vehicle_type == VehicleType.DRONE:
-                file_path = f'{pkg_robot_gazebo}/models/iris_realsense/model.sdf.jinja'
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        elif model_source == SimSource.DEFAULT:
-            if vehicle_type == VehicleType.DRONE:
-                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/iris/iris.sdf.jinja'
-            elif vehicle_type == VehicleType.ROVER:
-                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/r1_rover/r1_rover.sdf.jinja'
-            elif vehicle_type == VehicleType.PLANE:
-                file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/sitl_gazebo/models/plane/plane.sdf.jinja'
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        else:
+    mappings["camera_tilt"] = 0.0
+    mappings["include_camera"] = True
+    if model_name == "":
+        if model_source.name not in GZ_MODEL_LIST:
             raise Exception(f"Model source {model_source.name} not supported")
-    elif file_path == "" and model_name != "":
+        if vehicle_type.name not in GZ_MODEL_LIST[model_source.name]:
+            raise Exception(f"Vehicle type {vehicle_type.name} not supported for source {model_source.name}")
+        model_name = GZ_MODEL_LIST[model_source.name]
+    file_path = get_model_path("GAZEBO_MODEL_PATH", model_name)
+    if file_path == "":
         raise Exception(f"Model {model_name} could not be found for gazebo")
 
     ld.append(
@@ -281,6 +272,15 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
     return ld
 
 
+# Sources and their default models
+IGN_MODEL_LIST = {
+    SimSource.ROBOT.name: {
+        VehicleType.DRONE.name: {
+            ApiType.MAVROS.name: 'x3_mavlink',
+            ApiType.INHERENT.name: 'x3_ignition',
+        },
+    },
+}
 def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
                       hil_mode=False, serial_device="/dev/ttyACM0", vehicle_type=VehicleType.DRONE,
                       api=ApiType.MAVROS, model_source=SimSource.DEFAULT, model_name=""):
@@ -304,24 +304,16 @@ def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, ma
                 "serial_device": serial_device,
                 "serial_baudrate": "921600",
                 "hil_mode": "1" if hil_mode else "0"}
-    file_path = get_model_path("IGN_GAZEBO_RESOURCE_PATH", model_name)
-    if file_path == "" and model_name == "":
-        if model_source == SimSource.ROBOT:
-            pkg_robot_ignition = get_package_share_directory("robot_ignition")
-            if vehicle_type == VehicleType.DRONE:
-                if api == ApiType.MAVROS:
-                    file_path = f'{pkg_robot_ignition}/models/x3_mavlink/model.sdf.jinja'
-                    # file_path = f'{os.environ["PX4_AUTOPILOT"]}/Tools/simulation-ignition/models/x3/model.sdf'
-                    # file_path = f'{os.environ["HOME"]}/.ignition/fuel/fuel.ignitionrobotics.org/openrobotics/models/construction cone/2/model.sdf'
-                elif api == ApiType.INHERENT:
-                    file_path = f'{pkg_robot_ignition}/models/x3_ignition/model.sdf.jinja'
-                else:
-                    raise Exception(f"Api '{api.name}' not supported for ignition drone")
-            else:
-                raise Exception(f"Vehicle type {vehicle_type.name} not supported")
-        else:
+    if model_name == "":
+        if model_source.name not in IGN_MODEL_LIST:
             raise Exception(f"Model source {model_source.name} not supported")
-    elif file_path == "" and model_name != "":
+        if vehicle_type.name not in IGN_MODEL_LIST[model_source.name]:
+            raise Exception(f"Vehicle type {vehicle_type.name} not supported for source {model_source.name}")
+        if api.name not in IGN_MODEL_LIST[model_source.name][vehicle_type.name]:
+            raise Exception(f"API {api.name} not supported for vehicle type {vehicle_type.name} and source {model_source.name}")
+        model_name = IGN_MODEL_LIST[model_source.name][vehicle_type.name][api.name]
+    file_path = get_model_path("IGN_GAZEBO_RESOURCE_PATH", model_name)
+    if file_path == "":
         raise Exception(f"Model {model_name} could not be found for ignition")
     
     # Exposes ignition topics to ros

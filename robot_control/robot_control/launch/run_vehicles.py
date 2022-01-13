@@ -59,6 +59,31 @@ def launch_setup(context, *largs, **kwargs):
     # Establish log level
     log_level = largs["log_level"].upper()
 
+    team_yaml = largs["team_yaml"]
+    # NOTE: example team_yaml yaml file in `config/team.yaml`
+    if team_yaml != "":
+        ld.append(
+            LogInfo(msg=[
+                f'Using `team_yaml` file "{team_yaml}" to load vehicles.'
+            ])
+        )
+    team = get_team(largs, context)
+
+    # AirSim needs to be started outside since it doesn't follow normal process of (start sim -> spawn vehicle)
+    #  instead you must (specify vehicles -> start sim)
+    if sim == SimType.AIRSIM:
+        namespaces = list(team.keys())
+        ld += generate_airsim(largs["hitl"], largs["nb"], largs["pawn_bp"], namespaces, largs["environment"], log_level)
+        ld.append(
+            Node(
+                package='airsim_ros', executable="airsim_node",
+                output='screen',
+                arguments=[
+                    "--ros-args", "--log-level", f"airsim_ros_wrapper:={log_level}"
+                ],
+            ),
+        )
+
     # Start up environment
     env_args = [(a["name"], str(largs[a["name"]])) for a in ENV_LAUNCH_ARGS]
     ld.append(
@@ -72,15 +97,6 @@ def launch_setup(context, *largs, **kwargs):
     )
 
     # Spawn vehicles
-    team_yaml = largs["team_yaml"]
-    # NOTE: example team_yaml yaml file in `config/team.yaml`
-    if team_yaml != "":
-        ld.append(
-            LogInfo(msg=[
-                f'Using `team_yaml` file "{team_yaml}" to load vehicles.'
-            ])
-        )
-    team = get_team(largs, context)
     ld.append(
         LogInfo(msg=[
             f'Spawning vehicles with namespaces "{", ".join(team.keys())}".'
@@ -88,20 +104,6 @@ def launch_setup(context, *largs, **kwargs):
     )
     for spawn_args in team.values():
         ld += add_spawn_launch(spawn_args)
-        
-
-    if sim == SimType.AIRSIM:
-        namespaces = extract_namespaces(largs)
-        ld += generate_airsim(largs["hitl"], largs["nb"], largs["pawn_bp"], namespaces, largs["environment"], log_level)
-        ld.append(
-            Node(
-                package='airsim_ros', executable="airsim_node",
-                output='screen',
-                arguments=[
-                    "--ros-args", "--log-level", f"airsim_ros_wrapper:={log_level}"
-                ],
-            ),
-        )
 
     return ld
 
