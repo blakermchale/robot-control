@@ -27,13 +27,14 @@ LAUNCH_ARGS = [
     {"name": "gz_world",        "default": "empty.world",       "description": "Gazebo world to load"},
     {"name": "ign_world",       "default": "empty.sdf",         "description": "Ignition world to load"},
     {"name": "log_level",       "default": "debug",             "description": "Sets log level of ros nodes."},
+    {"name": "environment",     "default": "",                  "description": "Path to executable for running AirSim environment."},
 ]
 
 
 def launch_setup(context, *args, **kwargs):
     """Allows declaration of launch arguments within the ROS2 context
     """
-    args = get_local_arguments(LAUNCH_ARGS, context)
+    largs = get_local_arguments(LAUNCH_ARGS, context)
 
     # Check for empty variables
     if not os.environ.get("PX4_AUTOPILOT"):
@@ -42,10 +43,10 @@ def launch_setup(context, *args, **kwargs):
     ld = []
 
     # Choose base name according to vehicle type
-    sim = SimType[args['sim'].upper()]
+    sim = SimType[largs['sim'].upper()]
 
     # Establish log level
-    log_level = args["log_level"].upper()
+    log_level = largs["log_level"].upper()
 
     # Start simulator
     if sim == SimType.GAZEBO:
@@ -57,9 +58,9 @@ def launch_setup(context, *args, **kwargs):
                         os.path.sep, 'gazebo.launch.py']
                 ),
                 launch_arguments={
-                    'verbose':args['verbose'],
-                    'gui': args['gui'],
-                    'world': args['gz_world']
+                    'verbose':largs['verbose'],
+                    'gui': largs['gui'],
+                    'world': largs['gz_world']
                 }.items(),
             )
         )
@@ -72,24 +73,24 @@ def launch_setup(context, *args, **kwargs):
                         os.path.sep, 'ignition.launch.py']
                 ),
                 launch_arguments={
-                    'verbose':args['verbose'],
-                    'gui': args['gui'],
-                    'world': args['ign_world']
+                    'verbose':largs['verbose'],
+                    'gui': largs['gui'],
+                    'world': largs['ign_world']
                 }.items(),
             )
         )
     elif sim == SimType.AIRSIM:
-        # NOTE: this needs to be called after vehicles have been added to the config
-        raise NotImplementedError("AirSim environment should be started from outside")
-        ld += generate_airsim(args["hitl"], args["nb"], args["pawn_bp"], namespaces, args["environment"], log_level)
-        ld.append(
-            Node(
-                package='airsim_ros', executable="airsim_node",
-                output='screen',
-                arguments=[
-                    "--ros-args", "--log-level", f"airsim_ros_wrapper:={log_level}"
-                ],
-            ),
-        )
+        env = largs["environment"]
+        if not env:
+            raise Exception(f"AirSim environment must be valid not '{env}'")
+        run_env = run_environment(env=env)
+        # FIXME: resolve run_env flag always being false
+        # if not run_env:
+        #     ld.append(
+        #         LogInfo(msg=[
+        #             'Exiting early because run environment failed.'
+        #         ])
+        #     )
+        #     return ld
 
     return ld

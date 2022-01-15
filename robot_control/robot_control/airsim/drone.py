@@ -20,11 +20,12 @@ from argparse import ArgumentParser
 class Drone(ADrone, Vehicle):
     def __init__(self, instance=0):
         super().__init__(instance=instance)
+        self.get_logger().info("Creating AirSim client")
         self._client = MyMultirotorClient(self._namespace)
         self._pub_airsim_multirotor_state = self.create_publisher(MultirotorState, "airsim/multirotor_state", 10)
         # FIXME: temporary fix using join method to find when land finishes
         self._landed = True
-        self.get_logger().info("Drone initialized")
+        self.get_logger().info("AirSim Drone initialized")
 
     def update(self):
         self._client.update_state()

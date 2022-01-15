@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from robot_control.launch.structs import ApiType
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterFile
 from launch.actions import IncludeLaunchDescription, LogInfo
@@ -6,10 +7,10 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 import os
 import yaml
+import numpy as np
 
-from airsim_utils.generate_settings import create_settings, DEFAULT_PAWN_BP
+from airsim_utils.generate_settings import get_empty_settings, add_vehicle_settings, write_settings
 from airsim_utils.generate_settings import VehicleType as AirSimVehicleType
-from airsim_utils.run_environment import run_environment
 from ros2_utils.launch import get_local_arguments
 from robot_control.launch.structs import ScenarioType, ROBOT_CONTROL_PKG, SimType
 from robot_control.launch.environment import LAUNCH_ARGS as ENV_LAUNCH_ARGS
@@ -27,8 +28,7 @@ LAUNCH_ARGS = [
     {"name": "namespaces",      "default": "[]",                "description": "List of namespaces. Will autofill if number spawned is greater than number of items. Ex: ['drone','rover'].",
         "type": "list"},
     {"name": "base_name",       "default": "",                  "description": "Prefix for all vehicles."},
-    {"name": "environment",     "default": "",                  "description": "Path to executable for running AirSim environment."},
-    {"name": "pawn_bp",         "default": DEFAULT_PAWN_BP,     "description": "Pawn blueprint to spawn in AirSim."},
+    {"name": "pawn_bp",         "default": "",     "description": "Pawn blueprint to spawn in AirSim."},
 ]
 # Remove launch args that cannot be generically used
 SPAWN_LAUNCH_ARGS = [x for x in SPAWN_LAUNCH_ARGS if not x["name"] in ["namespace", "instance", "log_level", "sim"]]
@@ -71,29 +71,32 @@ def launch_setup(context, *args, **kwargs):
     # AirSim needs to be started outside since it doesn't follow normal process of (start sim -> spawn vehicle)
     #  instead you must (specify vehicles -> start sim)
     if sim == SimType.AIRSIM:
-        namespaces = list(team.keys())
-        ld += generate_airsim(largs["hitl"], largs["nb"], largs["pawn_bp"], namespaces, largs["environment"], log_level)
+        ld += generate_settings_from_team(team)
+
+    # Start up environment
+    env_args = [(a["name"], str(largs[a["name"]])) for a in ENV_LAUNCH_ARGS]
+    env_ld = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [ROBOT_CONTROL_PKG, os.path.sep, 'launch',
+                os.path.sep, 'environment.launch.py']
+        ),
+        launch_arguments=env_args,
+    )
+    ld.append(env_ld)
+
+    if sim == SimType.AIRSIM:
+        if not os.environ.get("WSL_HOST_IP"):
+            raise ValueError("WSL_HOST_IP must be set for AirSim to connect")
         ld.append(
             Node(
                 package='airsim_ros', executable="airsim_node",
                 output='screen',
                 arguments=[
-                    "--ros-args", "--log-level", f"airsim_ros_wrapper:={log_level}"
+                    "--ros-args", "--log-level", f"airsim_ros_wrapper:={log_level}",
+                    "-p", f"host_ip:={os.environ['WSL_HOST_IP']}",
                 ],
             ),
         )
-
-    # Start up environment
-    env_args = [(a["name"], str(largs[a["name"]])) for a in ENV_LAUNCH_ARGS]
-    ld.append(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                [ROBOT_CONTROL_PKG, os.path.sep, 'launch',
-                    os.path.sep, 'environment.launch.py']
-            ),
-            launch_arguments=env_args,
-        )
-    )
 
     # Spawn vehicles
     ld.append(
@@ -108,20 +111,22 @@ def launch_setup(context, *args, **kwargs):
 
 
 def add_spawn_launch(spawn_args):
+    # Need to make sure launch args are strings
+    spawn_args_str = {k: v if isinstance(v, dict) else str(v) for k, v in spawn_args.items()}
     return [
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 [ROBOT_CONTROL_PKG, os.path.sep, 'launch',
                     os.path.sep, 'spawn_vehicle.launch.py']
             ),
-            launch_arguments=spawn_args.items(),
+            launch_arguments=spawn_args_str.items(),
         )
     ]
 
 
 def get_team(largs, context, default_team_args=SPAWN_LAUNCH_ARGS):
     """Gets a dictionary of all vehicles being spawned and their fields."""
-    default_spawn_args = {a["name"]: str(largs[a["name"]]) for a in default_team_args}
+    default_spawn_args = {a["name"]: largs[a["name"]] for a in default_team_args}
     team_yaml = largs["team_yaml"]
     team = {}
     if team_yaml != "":
@@ -139,7 +144,7 @@ def get_team(largs, context, default_team_args=SPAWN_LAUNCH_ARGS):
             if not isinstance(v, dict):
                 raise ValueError(f"'{namespace}' invalid. Team yaml must contain a nested dictionary associated with each namespace.")
             for name, value in v.items():
-                # # Forces it to be a spawn launch arg
+                # Forces it to be a spawn launch arg
                 # if name in spawn_args:
                 spawn_args[name] = value
             team[namespace] = spawn_args
@@ -154,30 +159,31 @@ def get_team(largs, context, default_team_args=SPAWN_LAUNCH_ARGS):
     return team
 
 
-def generate_airsim(hitl=False, nb=1, pawn_bp=DEFAULT_PAWN_BP, namespaces=[], environment="", log_level="DEBUG"):
+def generate_settings_from_team(team:dict):
+    from robot_control.launch.spawn_vehicle import VehicleType
     ld = []
-    # Generate settings
-    if hitl:
-        # FIXME: issue with using custom LLA during HITL, just use default
-        create_settings(nb=nb, pawn_bp=pawn_bp,
-                        hitl=hitl)
-    else:
-        create_settings(nb=nb, pawn_bp=pawn_bp,
-                        lat=42.3097, lon=-71.0959, alt=141.0, hitl=hitl,
-                        vehicle_type=AirSimVehicleType.SIMPLEFLIGHT,
-                        namespaces=namespaces)
-        os.environ["PX4_SIM_HOST_ADDR"] = os.environ["WSL_HOST_IP"]
-    if not environment:
-        raise Exception(f"AirSim environment must be valid not '{environment}'")
-    run_env = run_environment(env=environment)
-    # FIXME: resolve run_env flag always being false
-    # if not run_env:
-    #     ld.append(
-    #         LogInfo(msg=[
-    #             'Exiting early because run environment failed.'
-    #         ])
-    #     )
-    #     return ld
+    settings = get_empty_settings()
+    for namespace, v in team.items():
+        vehicle_type, api = VehicleType[v["vehicle_type"].upper()], ApiType[v["api"].upper()]
+        if vehicle_type == VehicleType.DRONE and api == ApiType.MAVROS:
+            airsim_type = AirSimVehicleType.PX4MULTIROTOR
+        elif vehicle_type == VehicleType.DRONE and api == ApiType.INHERENT:
+            airsim_type = AirSimVehicleType.SIMPLEFLIGHT
+        else:
+            raise NotImplementedError(f"Vehicle type {vehicle_type.name.lower()} and api {api.name.lower()} not supported in AirSim")
+        i = v["instance"]
+        x, y, z, roll, pitch, yaw = v["x"], v["y"], v["z"], v["roll"], v["pitch"], v["yaw"]
+        roll = np.deg2rad(roll)
+        pitch = np.deg2rad(pitch)
+        yaw = np.deg2rad(yaw)
+        if np.isnan(x): x = 0.0
+        if np.isnan(y): y = int(i)*2
+        if np.isnan(z): z = 0.15
+        add_vehicle_settings(settings, namespace, airsim_type, x, y, z, roll, pitch, yaw, hitl=v["hitl"], instance=i)
+    write_settings(settings)
+    ld += [
+        LogInfo(msg=["Wrote settings for AirSim!"])
+    ]
     return ld
 
 

@@ -82,21 +82,7 @@ def launch_setup(context, *largs, **kwargs):
 
     namespace = largs["namespace"]
     i = largs["instance"]
-    main_msg = f'Spawning {largs["vehicle_type"]} \'{largs["namespace"]}\' - '
-    main_parts = []
-    main_parts.append(f'api: {largs["api"]}')
-    main_parts.append(f'sim: {largs["sim"]}')
-    main_parts.append(f'log_level: {largs["log_level"]}')
-    if largs["model_name"] != "":
-        main_parts.append(f'model: {largs["model_name"]}')
-    else:
-        main_parts.append(f'sim_source: {largs["model_name"]}')
-    if largs["hitl"]: main_parts.append(f'hitl')
-    if largs["camera"]: main_parts.append(f'camera')
-    main_parts.append(f'api: {largs["api"]}')
-    if api == ApiType.MAVROS: main_parts.append(f'instance: {largs["instance"]}')
-    main_msg += ', '.join(main_parts)
-    ld.append(LogInfo(msg=[main_msg]))
+    if sim != SimType.AIRSIM: ld += get_main_msg(largs)
 
     if vehicle_type == VehicleType.DRONE:
         model = "iris"
@@ -138,7 +124,7 @@ def launch_setup(context, *largs, **kwargs):
                                 roll=roll, pitch=pitch, yaw=yaw)
     elif sim == SimType.AIRSIM:
         ld.append(
-            LogInfo(msg=[f"AirSim should be started from outside launch, assuming it is..."])
+            LogInfo(msg=[f"AirSim settings/vehicle creation should be done from outside launch, assuming it is..."])
         )
 
     # Create executable call
@@ -220,7 +206,6 @@ GZ_MODEL_LIST = {
     SimSource.DEFAULT.name: {
         VehicleType.DRONE.name: 'iris',
         VehicleType.ROVER.name: 'r1_rover',
-        VehicleType.PLANE.name: 'iris_realsense',
     }
 }
 def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
@@ -256,7 +241,7 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
             raise Exception(f"Model source {model_source.name} not supported")
         if vehicle_type.name not in GZ_MODEL_LIST[model_source.name]:
             raise Exception(f"Vehicle type {vehicle_type.name} not supported for source {model_source.name}")
-        model_name = GZ_MODEL_LIST[model_source.name]
+        model_name = GZ_MODEL_LIST[model_source.name][vehicle_type.name]
     file_path = get_model_path("GAZEBO_MODEL_PATH", model_name)
     if file_path == "":
         raise Exception(f"Model {model_name} could not be found for gazebo")
@@ -293,6 +278,27 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
             output="screen"
         )
     )
+    return ld
+
+
+def get_main_msg(largs):
+    ld = []
+    api = ApiType[largs["api"].upper()]
+    main_msg = f'Spawning {largs["vehicle_type"]} \'{largs["namespace"]}\' - '
+    main_parts = []
+    main_parts.append(f'api: {largs["api"]}')
+    main_parts.append(f'sim: {largs["sim"]}')
+    main_parts.append(f'log_level: {largs["log_level"]}')
+    if largs["model_name"] != "":
+        main_parts.append(f'model: {largs["model_name"]}')
+    else:
+        main_parts.append(f'sim_source: {largs["model_name"]}')
+    if largs["hitl"]: main_parts.append(f'hitl')
+    if largs["camera"]: main_parts.append(f'camera')
+    main_parts.append(f'api: {largs["api"]}')
+    if api == ApiType.MAVROS: main_parts.append(f'instance: {largs["instance"]}')
+    main_msg += ', '.join(main_parts)
+    ld.append(LogInfo(msg=[main_msg]))
     return ld
 
 
