@@ -81,10 +81,11 @@ class Drone(ADrone, Vehicle):
         self.set_target(self.position.x, self.position.y, goal_alt, self.euler.z)
         client = MyMultirotorClient(self._namespace)
         client.takeoff(goal_alt)
-        return True
         # self._client.takeoff(goal_alt)
+        return True
 
     def send_waypoint(self, x: float, y: float, z: float, heading: float, frame: Frame = Frame.LOCAL_NED):
+        # self._client.cancel_last_task()
         try:
             x, y, z, roll, pitch, heading = self.convert_position_frame(x, y, z, 0, 0, heading, frame, Frame.LOCAL_NED)
         except Exception as e:
@@ -92,7 +93,7 @@ class Drone(ADrone, Vehicle):
             return False
         self.set_target(x, y, z, heading)
         client = MyMultirotorClient(self._namespace)
-        client.move_position(x, y, z, heading)
+        client.move_position(x, y, z, heading)  # can't command FRD with anything below -1.5m z for some reason
         # self._client.move_position(x, y, z, heading)
         return True
 

@@ -16,7 +16,6 @@ class MyMultirotorClient(MultirotorClient):
         ip = os.environ["WSL_HOST_IP"]
         super().__init__(ip=ip)
         self.confirmConnection()
-        print(f"ns: {namespace}")
         self._vehicle_name = namespace if namespace != "" else EMPTY_NAMESPACE
         self.enableApiControl(True, vehicle_name=self._vehicle_name)
         self._state = MultirotorState()
@@ -87,6 +86,10 @@ class MyMultirotorClient(MultirotorClient):
         # TODO: figure out how long duration should be
         yaw_mode = YawMode(is_rate=True, yaw_or_rate=np.rad2deg(yaw_rate))
         return self.moveByVelocityBodyFrameAsync(vx, vy, vz, 0.1, yaw_mode=yaw_mode, vehicle_name=self._vehicle_name)
+
+    def cancel_last_task(self):
+        """Cancel's vehicles last task."""
+        self.cancelLastTask(vehicle_name=self._vehicle_name)
 
     ########################
     ## Checking states

@@ -87,7 +87,11 @@ def launch_setup(context, *args, **kwargs):
     if sim == SimType.AIRSIM:
         if not os.environ.get("WSL_HOST_IP"):
             raise ValueError("WSL_HOST_IP must be set for AirSim to connect")
-        ld.append(
+        remapped_images = []
+        for namespace in team.keys():
+            remapped_images += remap_airsim_image(f"/{namespace}/realsense/Scene", f"/{namespace}/realsense/color")
+            remapped_images += remap_airsim_image(f"/{namespace}/realsense/DepthPlanar", f"/{namespace}/realsense/aligned_depth_to_color")
+        ld += [
             Node(
                 package='airsim_ros', executable="airsim_node",
                 output='screen',
@@ -95,8 +99,37 @@ def launch_setup(context, *args, **kwargs):
                     "--ros-args", "--log-level", f"airsim_ros_wrapper:={log_level}",
                     "-p", f"host_ip:={os.environ['WSL_HOST_IP']}",
                 ],
+                remappings=remapped_images
             ),
-        )
+            # Node(
+            #     package='tf2_ros',
+            #     executable='static_transform_publisher',
+            #     name='ned_to_enu_pub',
+            #     arguments=['0', '0', '0', '1.57', '0', '3.14', 'world_ned', 'world_enu']#, '100']
+            # ),
+            # Node(
+            #     package='airsim_ros_pkgs',
+            #     executable='pd_position_controller_simple_node',
+            #     name='pid_position_node',
+            #     output='screen',
+            #     parameters=[{
+            #         'update_control_every_n_sec': 0.01,
+                    
+            #         'kp_x': 0.30,
+            #         'kp_y': 0.30,
+            #         'kp_z': 0.30,
+            #         'kp_yaw': 0.30,
+                    
+            #         'kd_x': 0.05,
+            #         'kd_y': 0.05,
+            #         'kd_z': 0.05,
+            #         'kd_yaw': 0.05,
+                
+            #         'reached_thresh_xyz': 0.1,
+            #         'reached_yaw_degrees': 5.0
+            #     }]
+            # )
+        ]
 
     # Spawn vehicles
     ld.append(
@@ -199,3 +232,12 @@ def extract_namespaces(args):
     if len(namespaces) != len(set(namespaces)):
         raise ValueError("Namespaces list contains duplicates")
     return namespaces
+
+def remap_airsim_image(input_image_ns, output_image_ns):
+    return [
+        (f"{input_image_ns}", f"{output_image_ns}/image_raw"),
+        (f"{input_image_ns}/camera_info", f"{output_image_ns}/camera_info"),
+        (f"{input_image_ns}/compressed", f"{output_image_ns}/image_raw/compressed"),
+        (f"{input_image_ns}/compressedDepth", f"{output_image_ns}/image_raw/compressedDepth"),
+        (f"{input_image_ns}/theora", f"{output_image_ns}/image_raw/theora")
+    ]
