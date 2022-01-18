@@ -175,7 +175,7 @@ class AVehicle(Node):
         """
         return np.linalg.norm(self.position-self.target.position)
 
-    def reached_target(self, tolerance=None, distance=None):
+    def reached_target(self, tolerance=None, distance=None, check_position=True, tolerance_yaw=None, ang_distance=None, check_yaw=True):
         """Determines if we have reached the target
 
         Args:
@@ -185,14 +185,20 @@ class AVehicle(Node):
         Returns:
             bool: Whether the target has been reached
         """
-        if tolerance is None:
-            tolerance = self.get_parameter('tolerance.xyz').value
-        tolerance_yaw = np.deg2rad(self.get_parameter('tolerance.yaw').value)
-        # TODO: need to get euler of vehicle in its FRD frame for maps with slants and ground vehicle
-        distance = self.distance_to_target() if distance is None else distance
-        ang_distance = np.abs(angular_dist(self.euler.z, self.target.euler.z))
+        reached = True
+        if check_position:
+            if tolerance is None:
+                tolerance = self.get_parameter('tolerance.xyz').value
+            # TODO: need to get euler of vehicle in its FRD frame for maps with slants and ground vehicle
+            distance = self.distance_to_target() if distance is None else distance
+            reached = reached and distance <= tolerance
+        if check_yaw:
+            if tolerance_yaw is None:
+                tolerance_yaw = np.deg2rad(self.get_parameter('tolerance.yaw').value)
+            ang_distance = np.abs(angular_dist(self.euler.z, self.target.euler.z)) if ang_distance is None else ang_distance
+            reached = reached and ang_distance <= tolerance_yaw
         # self.get_logger().debug(f"distance: {distance}, angular distance: {ang_distance}", throttle_duration_sec=2.0)
-        return tolerance >= distance and ang_distance <= tolerance_yaw
+        return reached
 
     def has_moved(self, init_position: np.ndarray, axis: Axes = Axes.XYZ):
         """Determines if vehicle has moved significantly.
@@ -232,6 +238,27 @@ class AVehicle(Node):
             bool: Whether the vehicle is armed.
         """
         raise NotImplementedError
+
+    def aligned_target(self, tolerance_yaw=0.2):
+        """Checks if vehicle is aligned with the target. This occurs when the vehicles heading points to or away from the target.
+        
+        Returns:
+            bool: Whether the vehicle is aligned with the target.
+        """
+        forward_ang = np.abs(angular_dist(self.euler.z, self.angle_to_target()))
+        backward_ang = np.abs(angular_dist(self.euler.z+np.pi, self.angle_to_target()))
+        # self.get_logger().debug(f"fwd: {forward_ang}, bwd: {backward_ang}")
+        return forward_ang <= tolerance_yaw or backward_ang <= tolerance_yaw
+        
+
+    def angle_to_target(self):
+        """Gets the angle towards the target in NED.
+        
+        Returns:
+            float: Angle towards target (rad).
+        """
+        dpos = NpVector3(self.target.position - self.position)
+        return np.arctan2(dpos.y, dpos.x)
 
     #############
     ## Actions ##

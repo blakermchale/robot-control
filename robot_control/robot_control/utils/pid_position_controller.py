@@ -92,7 +92,7 @@ class PIDPositionController:
             self.vel_cmd.x = (self.vel_cmd.x / vel_norm_horz) * self.constraints.max_vel_horz_abs
             self.vel_cmd.y = (self.vel_cmd.y / vel_norm_horz) * self.constraints.max_vel_horz_abs
         
-        if np.abs(self.vel_cmd.x) > self.constraints.max_vel_vert_abs:
+        if np.abs(self.vel_cmd.z) > self.constraints.max_vel_vert_abs:
             self.vel_cmd.z = (self.vel_cmd.z / np.abs(self.vel_cmd.z)) * self.constraints.max_vel_vert_abs
 
         if np.abs(self.vel_cmd.yaw) > self.constraints.max_yaw_rate:
@@ -102,7 +102,7 @@ class PIDPositionController:
         self.prev_error = XYZYaw(0.0, 0.0, 0.0, 0.0)
 
     def set_current(self, x, y, z, yaw):
-        self.curr_position = XYZYaw(x, y, z, yaw)
+        self.curr_position.xyz_yaw = [x, y, z, yaw]
 
     def set_target(self, x, y, z, yaw):
-        self.target_position = XYZYaw(x, y, z, yaw)
+        self.target_position.xyz_yaw = [x, y, z, yaw]

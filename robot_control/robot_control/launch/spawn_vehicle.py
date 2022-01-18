@@ -90,7 +90,6 @@ def launch_setup(context, *largs, **kwargs):
     elif vehicle_type == VehicleType.ROVER:
         model = "r1_rover"
         vehicle_exe = "rover"
-        raise Exception("Rover not supported yet")
     elif vehicle_type == VehicleType.PLANE:
         model = "plane"
         vehicle_exe = "plane"
@@ -309,6 +308,9 @@ IGN_MODEL_LIST = {
             ApiType.MAVROS.name: 'x3_mavlink',
             ApiType.INHERENT.name: 'x3_ignition',
         },
+        VehicleType.ROVER.name: {
+            ApiType.INHERENT.name: 'simple_rover_ignition',
+        }
     },
 }
 def spawn_ign_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mavlink_udp_port=14560,
