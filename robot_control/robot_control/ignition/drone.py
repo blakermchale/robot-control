@@ -35,11 +35,11 @@ class Drone(ADrone, Vehicle):
         self._pub_ign_enable = self.create_publisher(Bool, "_ign/enable", 1)
 
         # ROS parameters
-        self.declare_parameter("posctl.x.p", 1.0)
+        self.declare_parameter("posctl.x.p", 0.7)
         self.declare_parameter("posctl.x.d", 0.1)
-        self.declare_parameter("posctl.y.p", 1.0)
+        self.declare_parameter("posctl.y.p", 0.7)
         self.declare_parameter("posctl.y.d", 0.1)
-        self.declare_parameter("posctl.z.p", 1.0)
+        self.declare_parameter("posctl.z.p", 1.25)
         self.declare_parameter("posctl.z.d", 0.1)
         self.declare_parameter("posctl.yaw.p", 1.0)
         self.declare_parameter("posctl.yaw.d", 0.1)
