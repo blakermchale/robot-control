@@ -53,7 +53,7 @@ class Constraints:
 # Derived from AirSim PIDPositionController
 # https://github.com/microsoft/AirSim/blob/master/ros/src/airsim_ros_pkgs/src/pd_position_controller_simple.cpp
 class PIDPositionController:
-    def __init__(self, kp, kd, max_vel_horz_abs, max_vel_vert_abs, max_yaw_rate):
+    def __init__(self, kp, ki, kd, max_vel_horz_abs, max_vel_vert_abs, max_yaw_rate):
         """Generates velocity commands to move towards a position.
 
         Args:
@@ -61,7 +61,9 @@ class PIDPositionController:
             kd (np.ndarray): Array containing x, y, z, and yaw d values.
         """
         self.kp = kp
+        self.ki = ki
         self.kd = kd
+        self.integral = XYZYaw(0.0, 0.0, 0.0, 0.0)
         self.prev_error = XYZYaw(0.0, 0.0, 0.0, 0.0)
         self.curr_error = XYZYaw(0.0, 0.0, 0.0, 0.0)
         self.curr_position = XYZYaw(np.nan, np.nan, np.nan, np.nan)
@@ -79,12 +81,22 @@ class PIDPositionController:
         self.curr_error.xyz = self.target_position.xyz - self.curr_position.xyz
         self.curr_error.yaw = angular_dist(self.curr_position.yaw, self.target_position.yaw)
 
+        self.integral.xyz_yaw += self.ki * self.curr_error.xyz_yaw
+        vel_norm_horz = np.linalg.norm(self.integral.xy)
+        if vel_norm_horz > self.constraints.max_vel_horz_abs:
+            self.integral.x = (self.integral.x / vel_norm_horz) * self.constraints.max_vel_horz_abs
+            self.integral.y = (self.integral.y / vel_norm_horz) * self.constraints.max_vel_horz_abs
+        if np.abs(self.integral.z) > self.constraints.max_vel_vert_abs:
+            self.integral.z = (self.integral.z / np.abs(self.integral.z)) * self.constraints.max_vel_vert_abs
+        if np.abs(self.integral.yaw) > self.constraints.max_yaw_rate:
+            self.integral.yaw = (self.integral.yaw / np.abs(self.integral.yaw)) * self.constraints.max_yaw_rate
+        
         p_term = self.kp * self.curr_error.xyz_yaw
         d_term = self.kd * self.prev_error.xyz_yaw
 
         self.prev_error = self.curr_error
 
-        self.vel_cmd.xyz_yaw = p_term + d_term
+        self.vel_cmd.xyz_yaw = p_term + d_term + self.integral.xyz_yaw
 
     def enforce_dynamic_constraints(self):
         vel_norm_horz = np.linalg.norm(self.vel_cmd.xy)

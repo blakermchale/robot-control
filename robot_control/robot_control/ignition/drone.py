@@ -36,12 +36,16 @@ class Drone(ADrone, Vehicle):
 
         # ROS parameters
         self.declare_parameter("posctl.x.p", 0.7)
+        self.declare_parameter("posctl.x.i", 0.0)
         self.declare_parameter("posctl.x.d", 0.1)
         self.declare_parameter("posctl.y.p", 0.7)
+        self.declare_parameter("posctl.y.i", 0.0)
         self.declare_parameter("posctl.y.d", 0.1)
-        self.declare_parameter("posctl.z.p", 1.25)
+        self.declare_parameter("posctl.z.p", 0.7)
+        self.declare_parameter("posctl.z.i", 0.005)
         self.declare_parameter("posctl.z.d", 0.1)
         self.declare_parameter("posctl.yaw.p", 1.0)
+        self.declare_parameter("posctl.yaw.i", 0.0)
         self.declare_parameter("posctl.yaw.d", 0.1)
         self.declare_parameter("posctl.max_vel_horz_abs", 5.0)
         self.declare_parameter("posctl.max_vel_vert_abs", 3.0)
@@ -49,8 +53,9 @@ class Drone(ADrone, Vehicle):
         posctl = self.get_parameters_by_prefix("posctl")
         posctl = {k: v.value for k, v in posctl.items()}
         kp = np.asfarray([posctl["x.p"], posctl["y.p"], posctl["z.p"], posctl["yaw.p"]])
+        ki = np.asfarray([posctl["x.i"], posctl["y.i"], posctl["z.i"], posctl["yaw.i"]])
         kd = np.asfarray([posctl["x.d"], posctl["y.d"], posctl["z.d"], posctl["yaw.d"]])
-        self.pid_posctl = PIDPositionController(kp, kd, posctl["max_vel_horz_abs"], posctl["max_vel_vert_abs"], posctl["max_yaw_rate"])
+        self.pid_posctl = PIDPositionController(kp, ki, kd, posctl["max_vel_horz_abs"], posctl["max_vel_vert_abs"], posctl["max_yaw_rate"])
 
         self.get_logger().info("Ignition drone initialized")
 
@@ -61,6 +66,7 @@ class Drone(ADrone, Vehicle):
             # self.get_logger().error(f"------------CURRENT-----------\n{self.pose}", throttle_duration_sec=0.5)
             # self.get_logger().error(f"------------TARGET-----------\n{self.target}", throttle_duration_sec=0.5)
             vel_cmd = self.pid_posctl.update()
+            # self.get_logger().error(f"{self.pid_posctl.curr_error}")
             # self.get_logger().info(f"x: {vel_cmd.x}, y: {vel_cmd.y}, z: {vel_cmd.z}, yaw: {vel_cmd.yaw}", throttle_duration_sec=1.0)
             self.send_velocity(vel_cmd.x, vel_cmd.y, vel_cmd.z, vel_cmd.yaw, Frame.LOCAL_NED)
         elif self.reached_target(0.001) and self.target_valid:
