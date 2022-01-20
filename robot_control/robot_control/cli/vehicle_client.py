@@ -6,6 +6,7 @@ Vehicle Client
 Generic vehicle client to ROS2 actions and topics. Easy publishing, calling,
 and sending goals.
 '''
+import numpy as np
 import time
 import enum
 from typing import Any, List
@@ -18,6 +19,8 @@ from robot_control_interfaces.action import FollowWaypoints, GoWaypoint, RunBT
 from std_srvs.srv import Trigger
 from rcl_interfaces.srv import SetParameters, GetParameters, ListParameters, DescribeParameters
 from rcl_interfaces.msg import Parameter as ParameterMsg
+from nav_msgs.msg import Path
+from std_msgs.msg import Header
 
 from .common import get_parameter_value_msg_from_type, setup_send_action, NodeClient
 from ..utils.structs import Frame
@@ -40,6 +43,7 @@ class VehicleClient(NodeClient):
         self._pub_cmd_vel = self.create_publisher(Twist, "cmd/velocity", 1)
         self._pub_cmd_ned = self.create_publisher(Pose, "cmd/ned", 1)
         self._pub_cmd_frd = self.create_publisher(Pose, "cmd/frd", 1)
+        self._pub_cmd_path_ned = self.create_publisher(Path, "cmd/path/ned", 1)
         # ROS parameter setting and getting
         self._params_node_name = "vehicle"
         self._set_params_srvs()
@@ -200,7 +204,25 @@ class VehicleClient(NodeClient):
                 time.sleep(0.1)  # TODO: don't use time, use rate from rclpy
         except KeyboardInterrupt:
             pass
-        
+
+    def publish_path(self, xyz_yaw: np.ndarray, frame: Frame):
+        msg = Path()
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = "map"
+        if frame == Frame.LOCAL_NED:
+            for e in xyz_yaw:
+                p = PoseStamped()
+                p.pose.position.x = e[0]
+                p.pose.position.y = e[1]
+                p.pose.position.z = e[2]
+                p.pose.orientation = NpVector4.rpy(0.,0.,e[3]).get_quat_msg()
+                p.header = header
+                msg.poses.append(p)
+            msg.header = header
+            self._pub_cmd_path_ned.publish(msg)
+        else:
+            raise ValueError(f"Frame {frame.name} not supported for path publisher yet")
 
     @property
     def params_node_name(self):

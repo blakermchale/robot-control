@@ -14,6 +14,7 @@ from rclpy.parameter import Parameter
 from rcl_interfaces.msg import Parameter as ParameterMsg
 from pprint import pprint
 import numpy as np
+import argparse
 
 class bcolors:
     HEADER = '\033[95m'
@@ -25,6 +26,15 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
+def xyz_yaw_type(s):
+    try:
+        x, y, z, yaw = map(float, s.split(','))
+        return [x, y, z, np.deg2rad(yaw)]
+    except:
+        raise argparse.ArgumentTypeError("Must be x,y,z,yaw")
+
 
 # https://pymotw.com/2/cmd/
 # https://pypi.org/project/cmd2/
@@ -105,6 +115,13 @@ class DroneShell(ClientShell):
     @with_argparser(_pub_ned_argparser)
     def do_pub_ned(self, opts):
         self.client.publish_pose(opts.x,opts.y,opts.z,np.deg2rad(opts.yaw),Frame.LOCAL_NED)
+
+    _pub_path_ned_argparser = Cmd2ArgumentParser(description='Publishes `cmd/path/ned` path.')
+    _pub_path_ned_argparser.add_argument('xyz_yaw', type=xyz_yaw_type, help='x(m),y(m),z(m),yaw(deg)', nargs="+")
+    @with_argparser(_pub_path_ned_argparser)
+    def do_pub_path_ned(self, opts):
+        path = np.asfarray(opts.xyz_yaw)
+        self.client.publish_path(path, Frame.LOCAL_NED)
 
     _pub_vel_argparser = Cmd2ArgumentParser(description='Publishes `cmd/frd` pose.')
     _pub_vel_argparser.add_argument('vx', type=float, help='x (m/s)')

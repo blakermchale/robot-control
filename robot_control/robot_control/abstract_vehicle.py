@@ -11,7 +11,7 @@ from std_msgs.msg import Header
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 # ROS interfaces
 from geometry_msgs.msg import PointStamped, PoseStamped, Twist, Pose, TransformStamped
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
 from std_srvs.srv import Trigger
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from robot_control_interfaces.msg import Waypoint
@@ -38,6 +38,9 @@ class AVehicle(Node):
         )
         self._last_cmd_vel_time = self.get_clock().now()
         self._wait_moved = Duration(seconds=5)
+        self._path_updated = False
+        self._target_path = None
+        self._target_path_idx = 0
 
         # Setup loop
         timer_period = 1/20  # seconds
@@ -48,11 +51,13 @@ class AVehicle(Node):
         self._pub_pose = self.create_publisher(PoseStamped, "pose", 10)
         self._pub_odom = self.create_publisher(Odometry, "odom", 10)
         self._pub_target = self.create_publisher(Odometry, "target", 10)
+        self._pub_path = self.create_publisher(Path, "path", 10)
 
         # Subscribers
         self._sub_vel = self.create_subscription(Twist, "cmd/velocity", self._cb_velocity, 1)
-        self._sub_pose = self.create_subscription(Pose, "cmd/ned", self._cb_ned, 1)
-        self._sub_pose = self.create_subscription(Pose, "cmd/frd", self._cb_frd, 1)
+        self._sub_pose_ned = self.create_subscription(Pose, "cmd/ned", self._cb_ned, 1)
+        self._sub_pose_frd = self.create_subscription(Pose, "cmd/frd", self._cb_frd, 1)
+        self._sub_path_ned = self.create_subscription(Path, "cmd/path/ned", self._cb_path_ned, 1)
 
         # Services
         self._srv_arm = self.create_service(Trigger, "arm", self._handle_arm)
@@ -90,6 +95,31 @@ class AVehicle(Node):
         self._publish_target()
         if self.get_parameter("tf.send").value:
             self._publish_tf()
+        if self._target_path:
+            if self._path_updated:
+                self._pub_path.publish(convert_axes_from_msg(self._target_path, AxesFrame.URHAND, AxesFrame.RHAND))
+                # TODO: check how path changed and choose waypoint closest to current and follow path from there
+                self._path_updated = False
+            if self.reached_target(tolerance=0.1):
+                self._target_path_idx += 1
+                if self._target_path_idx >= len(self._target_path.poses):
+                    self._target_path = None
+                    self._path_updated = False
+                    self._target_path_idx = 0
+                    null_path = Path()
+                    header = Header()
+                    header.stamp = self.get_clock().now().to_msg()
+                    header.frame_id = "map"
+                    null_path.header = header
+                    self._pub_path.publish(null_path)
+                    self.get_logger().debug("Reached end of path!")
+                    return
+            pose = NpPose.ros(self._target_path.poses[self._target_path_idx].pose)
+            if self.target == pose:  # exit if the current target is the path pose
+                return
+            p = pose.position
+            yaw = pose.orientation.yaw
+            self.send_waypoint(p.x, p.y, p.z, yaw)
 
     ######################
     ## Control commands ##
@@ -400,6 +430,15 @@ class AVehicle(Node):
         p = msg.position
         yaw = NpVector4.ros(msg.orientation).yaw
         self.send_waypoint(p.x, p.y, p.z, yaw, Frame.FRD)
+
+    def _cb_path_ned(self, msg: Path):
+        """Callback for receiving pose commands to send to vehicle. Assumes LOCAL_NED."""
+        if not msg.poses:
+            self.get_logger().error("Received path must not be empty")
+            return
+        if self._target_path is None or msg != self._target_path:
+            self._path_updated = True
+            self._target_path = msg
 
     ################
     ## Publishers ##
