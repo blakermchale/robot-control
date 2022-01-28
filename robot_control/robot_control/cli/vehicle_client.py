@@ -22,7 +22,7 @@ from rcl_interfaces.msg import Parameter as ParameterMsg
 from nav_msgs.msg import Path
 from std_msgs.msg import Header
 
-from .common import get_parameter_value_msg_from_type, setup_send_action, NodeClient
+from ros2_utils.cli import get_parameter_value_msg_from_type, setup_send_action, NodeClient
 from ..utils.structs import Frame
 from ros2_utils import NpVector4
 

@@ -11,7 +11,7 @@ from rclpy.action import ActionClient
 from robot_control_interfaces.action import ArmTakeoff, Land
 
 from .vehicle_client import VehicleClient
-from .common import setup_send_action
+from ros2_utils.cli import setup_send_action
 from rclpy.task import Future
 
 

@@ -6,7 +6,7 @@ Shell interface for calling ROS2 actions.
 '''
 import rclpy
 from cmd2 import Cmd2ArgumentParser, with_argparser
-from .common import complete_action_call, ClientShell
+from ros2_utils.cli import complete_action_call, ClientShell
 from .drone_client import DroneClient
 from ..utils.structs import Frame
 from argparse import ArgumentParser
@@ -62,7 +62,7 @@ class DroneShell(ClientShell):
     @with_argparser(_go_coord_argparser)
     def do_go_wp(self, opts):
         future = self.client.send_go_waypoint(opts.x, opts.y, opts.z, np.deg2rad(opts.yaw), opts.frame)
-        complete_action_call(self.client, self.executor, future, "go_waypoint")
+        complete_action_call(self.executor, future)
 
     # Safety wrapper to always send FRD on field, since any other could cause unknown results
     _go_frd_argparser = Cmd2ArgumentParser(description='Sends `go_waypoint` action with FRD.')
@@ -73,19 +73,19 @@ class DroneShell(ClientShell):
     @with_argparser(_go_frd_argparser)
     def do_go_frd(self, opts):
         future = self.client.send_go_waypoint(opts.x, opts.y, opts.z, np.deg2rad(opts.yaw), Frame.FRD)
-        complete_action_call(self.client, self.executor, future, "go_waypoint")
+        complete_action_call(self.executor, future)
 
     _takeoff_argparser = Cmd2ArgumentParser(description='Sends `arm_takeoff` action.')
     _takeoff_argparser.add_argument('alt', type=float, help='height (m)')
     @with_argparser(_takeoff_argparser)
     def do_takeoff(self, opts):
         future = self.client.send_arm_takeoff(opts.alt)
-        complete_action_call(self.client, self.executor, future, "arm_takeoff")
+        complete_action_call(self.executor, future)
 
     def do_land(self, opts):
         """Sends `land` action."""
         future = self.client.send_land()
-        complete_action_call(self.client, self.executor, future, "land")
+        complete_action_call(self.executor, future)
 
     _follow_wps_argparser = Cmd2ArgumentParser(description='Sends `follow_waypoints` action.')
     _follow_wps_argparser.add_argument('tolerance', type=float, help='tolerance for settling on waypoint')
@@ -94,7 +94,7 @@ class DroneShell(ClientShell):
     def do_follow_wps(self, opts):
         wps = np.asfarray(opts.xyz_yaw_frame)
         future = self.cli.send_follow_waypoints(wps, opts.tolerance)
-        complete_action_call(self.client, self.executor, future, "follow_waypoints")
+        complete_action_call(self.executor, future)
 
     def do_arm(self, opts):
         """Sends `arm` service."""
@@ -113,7 +113,7 @@ class DroneShell(ClientShell):
     @with_argparser(_run_tree_argparser)
     def do_run_tree(self, opts):
         future = self.client.send_run_tree(opts.tree)
-        complete_action_call(self.client, self.executor, future, "run_tree")
+        complete_action_call(self.executor, future)
 
     _pub_frd_argparser = Cmd2ArgumentParser(description='Publishes `cmd/frd` pose.')
     _pub_frd_argparser.add_argument('x', type=float, help='x (m)')
