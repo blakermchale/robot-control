@@ -13,7 +13,7 @@ from typing import Any, List
 from rclpy.executors import Executor
 from rclpy.action import ActionClient
 
-from geometry_msgs.msg import PoseStamped, Twist, Pose
+from geometry_msgs.msg import PoseStamped, Twist, Pose, Point
 from robot_control_interfaces.msg import Waypoint
 from robot_control_interfaces.action import FollowWaypoints, GoWaypoint, RunBT
 from std_srvs.srv import Trigger
@@ -28,7 +28,7 @@ from ros2_utils import NpVector4
 
 
 class VehicleClient(NodeClient):
-    def __init__(self, executor: Executor, namespace=None):
+    def __init__(self, executor: Executor, namespace=None, log_feedback=True):
         super().__init__("vehicle_client", executor, namespace=namespace)
 
         # Vehicle state
@@ -51,6 +51,7 @@ class VehicleClient(NodeClient):
         # Internal states
         self._pose = PoseStamped()
         self._poses_received = 0
+        self.log_feedback = log_feedback
 
         # Pre-load parameters assuming types will not change
         self._node_parameters = {}
@@ -87,9 +88,21 @@ class VehicleClient(NodeClient):
             return goal
         return send_action
 
-    def send_follow_waypoints(self, waypoints: List[Waypoint], tolerance: float):
+    def send_follow_waypoints(self, xyz_yaw_frame: np.ndarray, tolerance: float):
+        """Sends follow_waypoints action to vehicle namespace.
+
+        Args:
+            xyz_yaw_frame (np.ndarray): np array with first 4 values as x,y,z,yaw and las
+            tolerance (float): Tolerance to accept a waypoint.
+
+        Returns:
+            Future: future object for action
+        """
         @setup_send_action(self, self._cli_follow_waypoints, self._feedback_follow_waypoints)
         def send_action():
+            waypoints = []
+            for row in xyz_yaw_frame:
+                waypoints.append(Waypoint(position=Point(x=row[0],y=row[1],z=row[2]),heading=row[3],frame=int(row[4])))
             goal = FollowWaypoints.Goal()
             goal.waypoints = waypoints
             goal.tolerance = tolerance
@@ -147,7 +160,7 @@ class VehicleClient(NodeClient):
 
     def send_get_parameters(self, names: List[str]):
         if not self._cli_get_param.wait_for_service(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No service available")
+            self.get_logger().error(f"No service available {self._cli_get_param.srv_name}")
             return
         req = GetParameters.Request()
         req.names = names
@@ -157,7 +170,7 @@ class VehicleClient(NodeClient):
 
     def send_list_parameters(self):
         if not self._cli_list_param.wait_for_service(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No service available")
+            self.get_logger().error(f"No service available {self._cli_list_param.srv_name}")
             return
         future = self._cli_list_param.call_async(ListParameters.Request())
         self._executor.spin_until_future_complete(future)
@@ -165,7 +178,7 @@ class VehicleClient(NodeClient):
 
     def send_describe_parameters(self, names):
         if not self._cli_desc_param.wait_for_service(timeout_sec=self._timeout_sec):
-            self.get_logger().error("No service available")
+            self.get_logger().error(f"No service available {self._cli_desc_param.srv_name}")
             return
         future = self._cli_desc_param.call_async(DescribeParameters.Request(names=names))
         self._executor.spin_until_future_complete(future)
@@ -190,7 +203,7 @@ class VehicleClient(NodeClient):
         msg.position.x = x
         msg.position.y = y
         msg.position.z = z
-        msg.orientation = NpVector4.rpy(0.,0.,heading).get_quat_msg()
+        msg.orientation = NpVector4.from_rpy(0.,0.,heading).get_quat_msg()
         if frame == Frame.FRD:
             pub = self._pub_cmd_frd
         elif frame == Frame.LOCAL_NED:
@@ -216,7 +229,7 @@ class VehicleClient(NodeClient):
                 p.pose.position.x = e[0]
                 p.pose.position.y = e[1]
                 p.pose.position.z = e[2]
-                p.pose.orientation = NpVector4.rpy(0.,0.,e[3]).get_quat_msg()
+                p.pose.orientation = NpVector4.from_rpy(0.,0.,e[3]).get_quat_msg()
                 p.header = header
                 msg.poses.append(p)
             msg.header = header
@@ -251,10 +264,13 @@ class VehicleClient(NodeClient):
     ## Feedback callbacks
     #######################
     def _feedback_follow_waypoints(self, feedback):
-        self.get_logger().info(f"`follow_waypoints` feedback: {feedback.feedback.distance}m", throttle_duration_sec=2.0)
+        self.feedback = feedback.feedback
+        if self.log_feedback: self.get_logger().info(f"`follow_waypoints` feedback: {feedback.feedback.distance}m, idx: {feedback.feedback.idx}", throttle_duration_sec=2.0)
 
     def _feedback_go_waypoint(self, feedback):
-        self.get_logger().info(f"`go_waypoint` feedback: {feedback.feedback.distance}m", throttle_duration_sec=2.0)
+        self.feedback = feedback.feedback
+        if self.log_feedback: self.get_logger().info(f"`go_waypoint` feedback: {feedback.feedback.distance}m", throttle_duration_sec=2.0)
 
     def _feedback_run_tree(self, feedback):
-        self.get_logger().info(f"`run_tree` feedback: running for {feedback.feedback.time.sec}s", throttle_duration_sec=2.0)
+        self.feedback = feedback.feedback
+        if self.log_feedback: self.get_logger().info(f"`run_tree` feedback: running for {feedback.feedback.time.sec}s", throttle_duration_sec=2.0)

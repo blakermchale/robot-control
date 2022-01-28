@@ -16,16 +16,18 @@ from rclpy.parameter import Parameter
 from rcl_interfaces.msg import ParameterValue
 from cmd2 import Cmd, Cmd2ArgumentParser, with_argparser
 from rclpy.executors import MultiThreadedExecutor
+from enum import IntEnum, auto
 
 
 class NodeClient(Node):
     def __init__(self, node_name: str, executor: Executor, **kwargs):
-        super().__init__(node_name, **kwargs)
+        super().__init__(node_name, use_global_arguments=False, **kwargs)  #NOTE: need to disable global args to accept namespace from kwargs
         self.namespace = self.get_namespace().split("/")[-1]
 
         # Internal states
         self._timeout_sec = 10.0
         self._waiting_for_gh = False
+        self.feedback = None
 
         # Goal handles
         self._goal_handles = {}
@@ -39,6 +41,7 @@ class NodeClient(Node):
     def reset_actions(self):
         # self._goal_handles = {}
         self._waiting_for_gh = True
+        self.feedback = None
 
     def _action_response(self, action_name: str, future: Future):
         goal_handle = future.result()
@@ -113,9 +116,9 @@ class ClientShell(Cmd):
                 self.executor.spin_once()
             goal_handles = self.client._goal_handles.values()
             gh_futures = [goal_handle.get_result_async() for goal_handle in goal_handles]
-            for goal_handle in goal_handles:
-                gh_future = goal_handle.get_result_async()
-                gh_futures.append(gh_future)
+            # for goal_handle in goal_handles:
+            #     gh_future = goal_handle.get_result_async()
+            #     gh_futures.append(gh_future)
             # Wait for goal handle futures to finish
             while self.executor._context.ok() and not check_futures_done(gh_futures) and not self.executor._is_shutdown:
                 self.executor.spin_once()
@@ -141,6 +144,38 @@ class ClientShell(Cmd):
     @property
     def executor(self):
         return self.client.executor
+
+
+class CompleteActionState(IntEnum):
+    WAIT_GH=0
+    WAIT_GH_FUTURE=auto()
+    CHECK_STATUS=auto()
+    END=auto()
+    SUCCEEDED=auto()
+    FAILURE=auto()
+    CANCELED=auto()
+
+
+def gh_state_machine(data):
+    state = data["state"]
+    if state == CompleteActionState.WAIT_GH:
+        if data["future"].done():
+            data["client"]._waiting_for_gh = False
+            data["goal_handle"] = data["future"].result()
+            return CompleteActionState.WAIT_GH_FUTURE
+    elif state == CompleteActionState.WAIT_GH_FUTURE:
+        if data.get("gh_future") is None: data["gh_future"] = data["goal_handle"].get_result_async()
+        if data["gh_future"].done():
+            data["client"]._goal_handles.pop(data["goal_handle"]._action_client._action_name)
+            return CompleteActionState.CHECK_STATUS
+    elif state == CompleteActionState.CHECK_STATUS:
+        if data["goal_handle"].status == GoalStatus.STATUS_SUCCEEDED:
+            return CompleteActionState.SUCCEEDED
+        elif data["goal_handle"].status == GoalStatus.STATUS_CANCELED:
+            return CompleteActionState.CANCELED
+        else:
+            return CompleteActionState.FAILURE
+    return state
 
 
 def complete_action_call(node, executor: Type[Executor], future, action_name: str):

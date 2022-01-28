@@ -20,6 +20,7 @@ from ros2_utils import angular_dist, NpPose, NpTwist, NpVector3, NpVector4, Axes
 from .utils.structs import Frame
 # Common libraries
 import numpy as np
+from typing import List
 
 
 class AVehicle(Node):
@@ -29,18 +30,19 @@ class AVehicle(Node):
         self.instance = instance
         self._namespace = self.get_namespace().split("/")[-1]
         self.odom = NpOdometry(
-            NpPose(NpVector3.xyz(0.0, 0.0, 0.0), NpVector4.xyzw(0.0, 0.0, 0.0, 1.0)),
-            NpTwist(NpVector3.xyz(0.0, 0.0, 0.0), NpVector3.xyz(0.0, 0.0, 0.0))
+            NpPose(NpVector3.from_xyz(0.0, 0.0, 0.0), NpVector4.from_xyzw(0.0, 0.0, 0.0, 1.0)),
+            NpTwist(NpVector3.from_xyz(0.0, 0.0, 0.0), NpVector3.from_xyz(0.0, 0.0, 0.0))
         )
         self.target_odom = NpOdometry(
-            NpPose(NpVector3.xyz(0.0, 0.0, 0.0), NpVector4.xyzw(0.0, 0.0, 0.0, 1.0)),
-            NpTwist(NpVector3.xyz(0.0, 0.0, 0.0), NpVector3.xyz(0.0, 0.0, 0.0))
+            NpPose(NpVector3.from_xyz(0.0, 0.0, 0.0), NpVector4.from_xyzw(0.0, 0.0, 0.0, 1.0)),
+            NpTwist(NpVector3.from_xyz(0.0, 0.0, 0.0), NpVector3.from_xyz(0.0, 0.0, 0.0))
         )
         self._last_cmd_vel_time = self.get_clock().now()
         self._wait_moved = Duration(seconds=5)
         self._path_updated = False
         self._target_path = None
         self._target_path_idx = 0
+        self._target_path_tol = 0.1
 
         # Setup loop
         timer_period = 1/20  # seconds
@@ -100,21 +102,13 @@ class AVehicle(Node):
                 self._pub_path.publish(convert_axes_from_msg(self._target_path, AxesFrame.URHAND, AxesFrame.RHAND))
                 # TODO: check how path changed and choose waypoint closest to current and follow path from there
                 self._path_updated = False
-            if self.reached_target(tolerance=0.1):
+            if self.reached_target(tolerance=self._target_path_tol):
                 self._target_path_idx += 1
                 if self._target_path_idx >= len(self._target_path.poses):
-                    self._target_path = None
-                    self._path_updated = False
-                    self._target_path_idx = 0
-                    null_path = Path()
-                    header = Header()
-                    header.stamp = self.get_clock().now().to_msg()
-                    header.frame_id = "map"
-                    null_path.header = header
-                    self._pub_path.publish(null_path)
+                    self.cleanup_target_path()
                     self.get_logger().debug("Reached end of path!")
                     return
-            pose = NpPose.ros(self._target_path.poses[self._target_path_idx].pose)
+            pose = NpPose.from_ros(self._target_path.poses[self._target_path_idx].pose)
             if self.target == pose:  # exit if the current target is the path pose
                 return
             p = pose.position
@@ -193,6 +187,17 @@ class AVehicle(Node):
             bool: Flag indicating if velocity was sent successfully.
         """
         raise NotImplementedError
+
+    def cleanup_target_path(self):
+        self._target_path = None
+        self._path_updated = False
+        self._target_path_idx = 0
+        null_path = Path()
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = self.parent_frame_id
+        null_path.header = header
+        self._pub_path.publish(null_path)
 
     #####################
     ## Checking states ##
@@ -374,11 +379,38 @@ class AVehicle(Node):
 
     def _handle_follow_waypoints_goal(self, goal: FollowWaypoints):
         """Callback for following a path of waypoints."""
-        raise NotImplementedError
+        def get_request(goal) -> FollowWaypoints.Goal:
+            return goal.request
+        req = get_request(goal)
+        feedback_msg = FollowWaypoints.Feedback()
+        default_tol = self._target_path_tol
+        self._target_path = convert_waypoints_to_path(req.waypoints, self.get_clock().now().to_msg(), self.parent_frame_id)
+        self._path_updated = True
+        self._target_path_tol = req.tolerance
+        len_wps = len(req.waypoints)
+        while True:
+            distance = self.distance_to_target()
+            feedback_msg.distance = float(distance)
+            feedback_msg.idx = int(self._target_path_idx)
+            goal.publish_feedback(feedback_msg)
+            if goal.is_cancel_requested:
+                self.get_logger().info("FollowWaypoints: canceling")
+                self.cleanup_target_path()
+                self._target_path_tol = default_tol
+                self.halt()
+                goal.canceled()  #handle cancel action
+                self.get_logger().info("FollowWaypoints: canceled")
+                return FollowWaypoints.Result()
+            if not self._target_path:
+                self.get_logger().info("FollowWaypoints: finished path")
+                self._target_path_tol = default_tol
+                goal.succeed()  #handle success
+                return FollowWaypoints.Result()
+            self._check_rate.sleep()
 
     def _handle_follow_waypoints_cancel(self, cancel):
         """Callback for cancelling path."""
-        raise NotImplementedError
+        return CancelResponse.ACCEPT
 
     ##############
     ## Services ##
@@ -422,13 +454,13 @@ class AVehicle(Node):
     def _cb_ned(self, msg: Pose):
         """Callback for receiving pose commands to send to vehicle. Assumes LOCAL_NED."""
         p = msg.position
-        yaw = NpVector4.ros(msg.orientation).yaw
+        yaw = NpVector4.from_ros(msg.orientation).yaw
         self.send_waypoint(p.x, p.y, p.z, yaw)
 
     def _cb_frd(self, msg: Pose):
         """Callback for receiving pose commands to send to vehicle. Assumes FRD."""
         p = msg.position
-        yaw = NpVector4.ros(msg.orientation).yaw
+        yaw = NpVector4.from_ros(msg.orientation).yaw
         self.send_waypoint(p.x, p.y, p.z, yaw, Frame.FRD)
 
     def _cb_path_ned(self, msg: Path):
@@ -501,8 +533,8 @@ class AVehicle(Node):
             tf_list = []
             for name in static_names:
                 pname = f"static_frames.{name}"
-                pos = NpVector3.dict(self.get_parameters_by_prefix(f"{pname}.position"))
-                rot = NpVector4.dict(self.get_parameters_by_prefix(f"{pname}.euler"))  # TODO: add support for quaternion
+                pos = NpVector3.from_dict(self.get_parameters_by_prefix(f"{pname}.position"))
+                rot = NpVector4.from_dict(self.get_parameters_by_prefix(f"{pname}.euler"))  # TODO: add support for quaternion
                 tf = TransformStamped()
                 tf.header = header
                 self.declare_parameter_ez(f"{pname}.use_ns", True)
@@ -648,3 +680,17 @@ class AVehicle(Node):
 
     def declare_parameter_ez(self, name, value):
         if not self.has_parameter(name): self.declare_parameter(name, value)
+
+
+def convert_waypoints_to_path(msg_list: List[Waypoint], stamp, frame_id) -> Path:
+    out_msg = Path()
+    header = Header()
+    header.stamp = stamp
+    header.frame_id = frame_id
+    out_msg.header = header
+    for w in msg_list:
+        p = PoseStamped()
+        p.header = header
+        p.pose = NpPose(NpVector3.from_ros(w.position), NpVector4.from_rpy(0.,0.,w.heading)).get_msg()
+        out_msg.poses.append(p)
+    return out_msg

@@ -36,6 +36,14 @@ def xyz_yaw_type(s):
         raise argparse.ArgumentTypeError("Must be x,y,z,yaw")
 
 
+def xyz_yaw_frame_type(s):
+    try:
+        x, y, z, yaw, frame = map(float, s.split(','))
+        return [x, y, z, np.deg2rad(yaw), frame]
+    except:
+        raise argparse.ArgumentTypeError("Must be x,y,z,yaw,frame")
+
+
 # https://pymotw.com/2/cmd/
 # https://pypi.org/project/cmd2/
 class DroneShell(ClientShell):
@@ -78,6 +86,15 @@ class DroneShell(ClientShell):
         """Sends `land` action."""
         future = self.client.send_land()
         complete_action_call(self.client, self.executor, future, "land")
+
+    _follow_wps_argparser = Cmd2ArgumentParser(description='Sends `follow_waypoints` action.')
+    _follow_wps_argparser.add_argument('tolerance', type=float, help='tolerance for settling on waypoint')
+    _follow_wps_argparser.add_argument('xyz_yaw_frame', type=xyz_yaw_frame_type, help='x(m),y(m),z(m),yaw(deg),frame(int)', nargs="+")
+    @with_argparser(_follow_wps_argparser)
+    def do_follow_wps(self, opts):
+        wps = np.asfarray(opts.xyz_yaw_frame)
+        future = self.cli.send_follow_waypoints(wps, opts.tolerance)
+        complete_action_call(self.client, self.executor, future, "follow_waypoints")
 
     def do_arm(self, opts):
         """Sends `arm` service."""
@@ -184,6 +201,10 @@ class DroneShell(ClientShell):
         self._set_params_node_name_name_arg.choices = list(node_names_d.keys())
         self._get_parameters_name_arg.choices = names
         self._set_parameters_name_arg.choices = names
+
+    @property
+    def cli(self) -> DroneClient:
+        return self.client
 
 
 def main(args=None):

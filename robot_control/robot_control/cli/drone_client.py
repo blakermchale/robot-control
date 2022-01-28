@@ -16,8 +16,8 @@ from rclpy.task import Future
 
 
 class DroneClient(VehicleClient):
-    def __init__(self, executor, namespace=None):
-        super().__init__(executor, namespace=namespace)
+    def __init__(self, executor, namespace=None, log_feedback=True):
+        super().__init__(executor, namespace=namespace, log_feedback=log_feedback)
         self._cli_arm_takeoff = ActionClient(self, ArmTakeoff, "arm_takeoff")
         self._cli_land = ActionClient(self, Land, "land")
 
@@ -52,4 +52,5 @@ class DroneClient(VehicleClient):
     ## Feedback callbacks
     #######################
     def _feedback_arm_takeoff(self, feedback):
+        self.feedback = feedback.feedback
         self.get_logger().info(f"`arm_takeoff` feedback: {feedback.feedback.distance}m", throttle_duration_sec=2.0)
