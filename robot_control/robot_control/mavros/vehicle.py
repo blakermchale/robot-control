@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 from ros2_utils import convert_axes_from_msg, AxesFrame
 from ..abstract_vehicle import AVehicle
-from ..cli.common import get_parameter_value_msg_from_type
 from ..utils.structs import Frame
 
-from mavros_msgs.srv import CommandBool, CommandLong, ParamSetV2
+from mavros_msgs.srv import CommandBool, ParamSetV2, SetMode
 from mavros_msgs.msg import State, StatusText, Altitude, PositionTarget
 from geometry_msgs.msg import PoseStamped, Quaternion, Twist
 from nav_msgs.msg import Odometry
@@ -74,7 +73,7 @@ class Vehicle(AVehicle):
 
         # Services
         self._cli_arm = self.create_client(CommandBool, "mavros/cmd/arming")
-        self._cli_command = self.create_client(CommandLong, "mavros/cmd/command")
+        self._cli_set_mode = self.create_client(SetMode, "mavros/set_mode")
         # self._cli_set_param = self.create_client(ParamSetV2, "mavros/param/set")
         # Subscribers
         self._sub_state = self.create_subscription(State, "mavros/state", self._cb_state, 10)
@@ -197,47 +196,17 @@ class Vehicle(AVehicle):
     def set_mode(self, mode: PX4Mode):
         """Sets PX4 mode using the associations from https://discuss.px4.io/t/mav-cmd-do-set-mode-all-possible-modes/8495/2.
 
-        Here's an example of sending this command from the shell:
-        ros2 service call /drone_0/mavros/cmd/command mavros_msgs/srv/CommandLong "{'command':176,'param1':217,'param2':1}"
-
         Args:
             mode (PX4Mode): Mode for PX4 to switch to.
 
         Returns:
             bool: Flag indicating if mode was set.
         """
-        # base_mode = 219
-        # main_mode = 1
-        # sub_mode = 0
-        # if mode == PX4Mode.MANUAL:
-        #     base_mode = 217
-        #     main_mode = 1
-        # elif mode == PX4Mode.STABILIZED:
-        #     base_mode = 209
-        #     main_mode = 7
-        # elif mode == PX4Mode.ACRO:
-        #     base_mode = 209
-        #     main_mode = 5
-        # elif mode == PX4Mode.RATTITUDE:
-        #     base_mode = 193
-        #     main_mode = 8
-        # elif mode == PX4Mode.ALTCTL:
-        #     # base_mode = 193
-        #     base_mode = 209
-        #     main_mode = 2
-        # elif mode == PX4Mode.OFFBOARD:
-        #     base_mode = 209
-        #     main_mode = 6
-        # elif mode == PX4Mode.POSCTL:
-        #     base_mode = 209
-        #     main_mode = 3
-        req = CommandLong.Request()
-        req.command = int(PX4Command.MAV_CMD_DO_SET_MODE) #MAV_CMD_DO_SET_MODE
-        req.param1 = float(209)  # custom
-        req.param2 = float(mode.value)
-        resp = self._cli_command.call(req)
-        if not resp.success:
-            self.get_logger().error(f"Received ACK result from set mode: {resp.result}")
+        req = SetMode.Request()
+        req.custom_mode = mode.name if mode < PX4Mode.READY else f"AUTO.{mode.name}"
+        resp = self._cli_set_mode.call(req)
+        if not resp.mode_sent:
+            self.get_logger().error(f"'{req.custom_mode}' not sent")
             return False
         return True
 
