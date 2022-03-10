@@ -153,14 +153,14 @@ def launch_setup(context, *largs, **kwargs):
                 namespace=f"{namespace}/mavros",
                 # FIXME: parameters sometimes cause crash
                 parameters=[
-                    # {
-                    #     "fcu_url": "udp://:14540@127.0.0.1:14557",
-                    #     "gcs_url": "",
-                    #     "target_system_id": 1,
-                    #     "target_component_id": 1,
-                    #     "fcu_protocol": "v2.0",
-                    # },
-                    os.path.join(ROBOT_CONTROL_PKG, "config", "px4_sim_params.yaml"),
+                    {
+                        "fcu_url": f"udp://:{14540+i}@127.0.0.1:{14557+i}",
+                        "gcs_url": "",
+                        "target_system_id": i + 1,
+                        "target_component_id": 1,
+                        "fcu_protocol": "v2.0",
+                    },
+                    # os.path.join(ROBOT_CONTROL_PKG, "config", "px4_sim_params.yaml"),
                     # os.path.join(robot_control, "config", "px4_config.yaml"),
                     # os.path.join(robot_control, "config", "px4_pluginlists.yaml")
                 ]
