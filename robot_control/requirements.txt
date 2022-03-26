@@ -1,6 +1,6 @@
 # Airsim
-airsim
 msgpack-rpc-python
+airsim
 # General
 numpy
 scipy

@@ -14,6 +14,19 @@
   <test_depend>ros_testing</test_depend>
 
   <depend>ros2_utils</depend>
+  <depend>xacro</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <!-- Gazebo dependencies -->
+  <depend>ros_ign_gazebo</depend>
+  <depend>ros_ign_bridge</depend>
+  <!-- Mavros dependencies -->
+  <depend>mavros</depend>
+  <depend>geographiclib</depend>
+  <depend>geographic_msgs</depend>
+
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
