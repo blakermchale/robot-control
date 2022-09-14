@@ -55,7 +55,7 @@ def setup():
     if not os.environ.get("PX4_AUTOPILOT"):
         raise Exception("PX4_AUTOPILOT env variable must be set")
     px4_path = os.environ["PX4_AUTOPILOT"]
-    px4_gazebo_path = os.path.join(px4_path, "Tools", "sitl_gazebo")
+    px4_gazebo_path = os.path.join(px4_path, "Tools", "simulation", "gazebo", "sitl_gazebo")
 
     robot_gazebo_path = get_package_share_directory("robot_gazebo")
     nuav_gazebo_path = get_package_share_directory("nuav_gazebo")
@@ -74,17 +74,17 @@ def setup():
     os.environ["GAZEBO_PLUGIN_PATH"] = combine_names(plugins, ":")
 
     models = [
-        os.environ.get("GAZEBO_MODEL_PATH"),
         os.path.join(robot_gazebo_path, "models"),
         os.path.join(px4_gazebo_path, "models"),
-        os.path.join(nuav_gazebo_path, "models")
+        os.path.join(nuav_gazebo_path, "models"),
+        os.environ.get("GAZEBO_MODEL_PATH"),
     ]
     os.environ["GAZEBO_MODEL_PATH"] = combine_names(models, ":")
 
     resources = [
-        os.environ.get("GAZEBO_RESOURCE_PATH"),
         os.path.join(robot_gazebo_path, "worlds"),
         os.path.join(px4_gazebo_path, "worlds"),
-        os.path.join(nuav_gazebo_path, "worlds")
+        os.path.join(nuav_gazebo_path, "worlds"),
+        os.environ.get("GAZEBO_RESOURCE_PATH"),
     ]
     os.environ["GAZEBO_RESOURCE_PATH"] = combine_names(resources, ":")

@@ -271,7 +271,7 @@ def spawn_gz_vehicle(namespace="drone_0", instance=0, mavlink_tcp_port=4560, mav
             arguments=[
                 "-entity", namespace, "-file", tmp_path,
                 "-robot_namespace", namespace,
-                "-spawn_service_timeout", "120.0",
+                "-timeout", "120.0",
                 "-x", str(x), "-y", str(y), "-z", str(z),
                 "-R", str(roll), "-P", str(pitch), "-Y", str(yaw)
             ],
