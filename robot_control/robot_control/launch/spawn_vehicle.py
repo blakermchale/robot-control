@@ -295,7 +295,6 @@ def get_main_msg(largs):
         main_parts.append(f'sim_source: {largs["model_name"]}')
     if largs["hitl"]: main_parts.append(f'hitl')
     if largs["camera"]: main_parts.append(f'camera')
-    main_parts.append(f'api: {largs["api"]}')
     if api == ApiType.MAVROS: main_parts.append(f'instance: {largs["instance"]}')
     main_msg += ', '.join(main_parts)
     ld.append(LogInfo(msg=[main_msg]))

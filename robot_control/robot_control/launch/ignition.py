@@ -59,7 +59,7 @@ def setup():
     if not os.environ.get("PX4_AUTOPILOT"):
         raise Exception("PX4_AUTOPILOT env variable must be set")
     px4_path = os.environ["PX4_AUTOPILOT"]
-    px4_ign_path = os.path.join(px4_path, "Tools", "simulation-ignition")
+    px4_ign_path = os.path.join(px4_path, "Tools", "simulation", "ignition")
     px4_ign_build_path = os.path.join(px4_path, "build", "px4_sitl_default", "build_ign_gazebo")
 
     robot_ignition_path = get_package_share_directory("robot_ignition")
