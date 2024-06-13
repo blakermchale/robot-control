@@ -28,11 +28,11 @@ class Drone(ADrone, Vehicle):
         self.target_valid = False  # Used for computing move to position
         # TODO: create parameter bridges for sensor msgs like GPS
         # Subscribers
-        self._sub_ign_joint_state = self.create_subscription(JointState, "_ign/joint_state", self._callback_ign_joint_state, 10)
-        self._sub_ign_odom = self.create_subscription(Odometry, "_ign/odom", self._callback_ign_odom, 10)
+        self._sub_ign_joint_state = self.create_subscription(JointState, "_sim/joint_state", self._callback_ign_joint_state, 10)
+        self._sub_ign_odom = self.create_subscription(Odometry, "_sim/odom", self._callback_ign_odom, 10)
         # Publishers
-        self._pub_ign_twist = self.create_publisher(Twist, "_ign/gazebo/command/twist", 1)
-        self._pub_ign_enable = self.create_publisher(Bool, "_ign/enable", 1)
+        self._pub_ign_twist = self.create_publisher(Twist, "_sim/command/twist", 1)
+        self._pub_ign_enable = self.create_publisher(Bool, "_sim/enable", 1)
 
         # ROS parameters
         self.declare_parameter("posctl.x.p", 0.7)

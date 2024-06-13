@@ -18,15 +18,19 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <!-- Gazebo dependencies -->
-  <depend>ros_ign_gazebo</depend>
-  <depend>ros_ign_bridge</depend>
+  <depend>ros_gz_sim</depend>
+  <depend>ros_gz_bridge</depend>
   <!-- Mavros dependencies -->
   <depend>mavros</depend>
   <depend>geographiclib</depend>
   <depend>geographic_msgs</depend>
+  <!-- Internal -->
+  <depend>robot_control_interfaces</depend>
 
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>robot_ignition</exec_depend>
+  <exec_depend>airsim_utils</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
