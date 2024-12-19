@@ -28,8 +28,8 @@ from ros2_utils import NpVector4
 
 
 class VehicleClient(NodeClient):
-    def __init__(self, executor: Executor, namespace=None, log_feedback=True):
-        super().__init__("vehicle_client", executor, namespace=namespace)
+    def __init__(self, executor: Executor, namespace=None, log_feedback=True, add_to_executor=True):
+        super().__init__("vehicle_client", executor, namespace=namespace, add_to_executor=add_to_executor)
 
         # Vehicle state
         self._sub_pose = self.create_subscription(PoseStamped, "pose", self._cb_pose, 10)
@@ -110,7 +110,7 @@ class VehicleClient(NodeClient):
         return send_action
 
     def send_arm(self):
-        if not self._cli_arm.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_arm.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error("No service available")
             return
         req = Trigger.Request()
@@ -119,7 +119,7 @@ class VehicleClient(NodeClient):
         return future.result()
 
     def send_disarm(self):
-        if not self._cli_disarm.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_disarm.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error("No service available")
             return
         req = Trigger.Request()
@@ -128,7 +128,7 @@ class VehicleClient(NodeClient):
         return future.result()
 
     def send_kill(self):
-        if not self._cli_kill.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_kill.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error("No service available")
             return
         req = Trigger.Request()
@@ -137,7 +137,7 @@ class VehicleClient(NodeClient):
         return future.result()
 
     def send_set_parameter(self, name: str, value: Any):
-        if not self._cli_set_param.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_set_param.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error("No service available")
             return
         param_type = self._node_parameters[name].type
@@ -149,7 +149,7 @@ class VehicleClient(NodeClient):
         return future.result()
 
     def send_get_parameter(self, name: str):
-        if not self._cli_get_param.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_get_param.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error("No service available")
             return
         req = GetParameters.Request()
@@ -159,7 +159,7 @@ class VehicleClient(NodeClient):
         return future.result()
 
     def send_get_parameters(self, names: List[str]):
-        if not self._cli_get_param.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_get_param.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error(f"No service available {self._cli_get_param.srv_name}")
             return
         req = GetParameters.Request()
@@ -169,7 +169,7 @@ class VehicleClient(NodeClient):
         return future.result()
 
     def send_list_parameters(self):
-        if not self._cli_list_param.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_list_param.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error(f"No service available {self._cli_list_param.srv_name}")
             return
         future = self._cli_list_param.call_async(ListParameters.Request())
@@ -177,7 +177,7 @@ class VehicleClient(NodeClient):
         return future.result()
 
     def send_describe_parameters(self, names):
-        if not self._cli_desc_param.wait_for_service(timeout_sec=self._timeout_sec):
+        if not self._cli_desc_param.wait_for_service(timeout_sec=self._action_wait_timeout_s):
             self.get_logger().error(f"No service available {self._cli_desc_param.srv_name}")
             return
         future = self._cli_desc_param.call_async(DescribeParameters.Request(names=names))

@@ -5,7 +5,7 @@ from ros2_utils.launch import get_launch_arguments
 from ros2_utils.launch_manager import LaunchManager
 from robot_control.launch.structs import SimType, VehicleType, ApiType, ROBOT_CONTROL_PKG, SimSource
 import os
-from ros2_utils.launch import get_local_arguments, parse_model_file, combine_names
+from ros2_utils.launch import parse_model_file, combine_names
 from robot_control.launch.ignition import setup as setup_ignition
 import numpy as np
 from launch_ros.actions import Node
