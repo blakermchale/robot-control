@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # ROS libraries
 import rclpy
-from rclpy.action import ActionServer, CancelResponse
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -9,6 +9,7 @@ from rclpy.node import Node
 from rclpy.clock import Duration
 from std_msgs.msg import Header
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
+from rclpy.action.server import ServerGoalHandle
 # ROS interfaces
 from geometry_msgs.msg import PointStamped, PoseStamped, Twist, Pose, TransformStamped
 from nav_msgs.msg import Odometry, Path
@@ -67,10 +68,11 @@ class AVehicle(Node):
         self._srv_kill = self.create_service(Trigger, "kill", self._handle_kill)
 
         # Actions
-        self._server_go_waypoint = ActionServer(self, GoWaypoint, "go_waypoint", self._handle_go_waypoint_goal,
-            cancel_callback=self._handle_go_waypoint_cancel)
-        self._server_follow_waypoints = ActionServer(self, FollowWaypoints, "follow_waypoints", self._handle_follow_waypoints_goal,
-            cancel_callback=self._handle_follow_waypoints_cancel)
+        self._server_go_waypoint = ActionServer(self, GoWaypoint, "go_waypoint", execute_callback=self._handle_go_waypoint_execute,
+            cancel_callback=self._handle_go_waypoint_cancel, goal_callback=self._handle_go_waypoint_goal)
+        self._server_follow_waypoints = ActionServer(self, FollowWaypoints, "follow_waypoints", execute_callback=self._handle_follow_waypoints_execute,
+            cancel_callback=self._handle_follow_waypoints_cancel, goal_callback=self._handle_follow_waypoints_goal)
+        self._active_action_server = False
 
         # TF
         self._br = TransformBroadcaster(self)
@@ -298,19 +300,31 @@ class AVehicle(Node):
     #############
     ## Actions ##
     #############
-    def _handle_go_waypoint_goal(self, goal: GoWaypoint):
+    def _handle_go_waypoint_goal(self, goal_request):
+        """Action callback for accepting goal request.
+        """
+        if self._active_action_server:
+            self.get_logger().info("GoWaypoint: Request already active. Stop other request to submit new one. Rejecting.")
+            return GoalResponse.REJECT
+        self._active_action_server = True
+        return GoalResponse.ACCEPT
+
+    def _handle_go_waypoint_execute(self, goal: ServerGoalHandle):
         """Callback for going to a single waypoint."""
         if not self._precheck_go_waypoint_goal():
             self._abort_go_waypoint()
             goal.abort()
+            self._active_action_server = False
             return GoWaypoint.Result()
-        position = goal.request.waypoint.position
-        heading = goal.request.waypoint.heading
-        frame = Frame(goal.request.waypoint.frame)
+        request : GoWaypoint.Goal = goal.request
+        position = request.waypoint.position
+        heading = request.waypoint.heading
+        frame = Frame(request.waypoint.frame)
         self.get_logger().debug(f"GoWaypoint: sending x: {position.x}, y: {position.y}, z: {position.z}, heading: {heading}, frame: {frame.name}")
         if not self.send_waypoint(position.x, position.y, position.z, heading, frame):
             self._abort_go_waypoint()
             goal.abort()
+            self._active_action_server = False
             return GoWaypoint.Result()
         feedback_msg = GoWaypoint.Feedback()
         start_time = self.get_clock().now()
@@ -337,6 +351,7 @@ class AVehicle(Node):
                 self.get_logger().error("GoWaypoint: hasn't moved aborting")
                 goal.abort()
                 self._abort_go_waypoint()
+                self._active_action_server = False
                 return GoWaypoint.Result()
             distance = self.distance_to_target()    
             reached = self.reached_target(distance=distance)     
@@ -350,11 +365,13 @@ class AVehicle(Node):
                 self._abort_go_waypoint()
                 goal.canceled()  #handle cancel action
                 self.get_logger().info("GoWaypoint: canceled")
+                self._active_action_server = False
                 return GoWaypoint.Result()
             if reached:
                 self.get_logger().info("GoWaypoint: reached destination")
                 self._succeed_go_waypoint()
                 goal.succeed()  #handle success
+                self._active_action_server = False
                 return GoWaypoint.Result()
             self._check_rate.sleep()
 
@@ -377,11 +394,18 @@ class AVehicle(Node):
         """Callback for cancelling waypoint."""
         return CancelResponse.ACCEPT
 
-    def _handle_follow_waypoints_goal(self, goal: FollowWaypoints):
+    def _handle_follow_waypoints_goal(self, goal_request):
+        """Action callback for accepting goal request.
+        """
+        if self._active_action_server:
+            self.get_logger().info("FollowWaypoints: Request already active. Stop other request to submit new one. Rejecting.")
+            return GoalResponse.REJECT
+        self._active_action_server = True
+        return GoalResponse.ACCEPT
+
+    def _handle_follow_waypoints_execute(self, goal: ServerGoalHandle):
         """Callback for following a path of waypoints."""
-        def get_request(goal) -> FollowWaypoints.Goal:
-            return goal.request
-        req = get_request(goal)
+        req : FollowWaypoints.Goal = goal.request
         feedback_msg = FollowWaypoints.Feedback()
         default_tol = self._target_path_tol
         self._target_path = convert_waypoints_to_path(req.waypoints, self.get_clock().now().to_msg(), self.parent_frame_id)
@@ -400,11 +424,13 @@ class AVehicle(Node):
                 self.halt()
                 goal.canceled()  #handle cancel action
                 self.get_logger().info("FollowWaypoints: canceled")
+                self._active_action_server = False
                 return FollowWaypoints.Result()
             if not self._target_path:
                 self.get_logger().info("FollowWaypoints: finished path")
                 self._target_path_tol = default_tol
                 goal.succeed()  #handle success
+                self._active_action_server = False
                 return FollowWaypoints.Result()
             self._check_rate.sleep()
 

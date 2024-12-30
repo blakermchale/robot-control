@@ -3,11 +3,12 @@
 from robot_control.abstract_vehicle import AVehicle
 # ROS packages
 import rclpy
-from rclpy.action import ActionServer, CancelResponse, ActionClient
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.time import Time
 from rclpy.duration import Duration
 from tf2_ros.transform_listener import TransformListener
 from tf2_ros.buffer import Buffer
+from rclpy.action.server import ServerGoalHandle
 # ROS messages
 from robot_control_interfaces.action import ArmTakeoff, Land
 import numpy as np
@@ -18,10 +19,11 @@ class ADrone(AVehicle):
         super().__init__(instance=instance)
 
         # Actions
-        self._server_arm_takeoff = ActionServer(self, ArmTakeoff, "arm_takeoff", self._handle_arm_takeoff_goal,
-            cancel_callback=self._handle_arm_takeoff_cancel)
-        self._server_land = ActionServer(self, Land, "land", self._handle_land_goal,
-            cancel_callback=self._handle_land_cancel)
+        self._server_arm_takeoff = ActionServer(self, ArmTakeoff, "arm_takeoff", execute_callback=self._handle_arm_takeoff_execute,
+            cancel_callback=self._handle_arm_takeoff_cancel, goal_callback=self._handle_arm_takeoff_goal)
+        self._server_land = ActionServer(self, Land, "land", execute_callback=self._handle_land_execute,
+            cancel_callback=self._handle_land_cancel, goal_callback=self._handle_land_goal)
+
         self.get_logger().debug("ADrone initialized")
 
     def takeoff(self, alt: float):
@@ -63,7 +65,16 @@ class ADrone(AVehicle):
             return False
         return True
 
-    def _handle_arm_takeoff_goal(self, goal):
+    def _handle_arm_takeoff_goal(self, goal_request):
+        """Action callback for accepting goal request.
+        """
+        if self._active_action_server:
+            self.get_logger().info("ArmTakeoff: Request already active. Stop other request to submit new one. Rejecting.")
+            return GoalResponse.REJECT
+        self._active_action_server = True
+        return GoalResponse.ACCEPT
+
+    def _handle_arm_takeoff_execute(self, goal: ServerGoalHandle):
         """Action callback for arming and taking off vehicle.
         """
         self.get_logger().debug("ArmTakeoff: arming")
@@ -86,24 +97,29 @@ class ADrone(AVehicle):
                 self.disarm()
                 self._abort_arm_takeoff()
                 goal.abort()
+                self._active_action_server = False
                 return ArmTakeoff.Result()
             if distance is not None: #publish distance to target
                 feedback_msg.distance = float(distance)
                 goal.publish_feedback(feedback_msg)
             if goal.is_cancel_requested:
-                self.land()
+                # TODO(bmchale): is it safer to land when cancelling or halt?
+                # self.land()
+                self.halt()
                 self.get_logger().info(f'ArmTakeoff: cancelling...')
-                while not self.is_landed():
-                    continue
-                self.disarm()
+                # while not self.is_landed():
+                #     continue
+                # self.disarm()
                 self.get_logger().info(f'ArmTakeoff: cancelled!')
                 goal.canceled() #handle cancel action
                 self._abort_arm_takeoff()
+                self._active_action_server = False
                 return ArmTakeoff.Result()
             if reached:
                 self.get_logger().info("ArmTakeoff: reached destination")
                 self._success_arm_takeoff()
                 goal.succeed() #handle sucess
+                self._active_action_server = False
                 return ArmTakeoff.Result()
             self._check_rate.sleep()
 
@@ -121,13 +137,23 @@ class ADrone(AVehicle):
         """Method that is ran after failed arm takeoff."""
         pass
 
-    def _handle_land_goal(self, goal):
+    def _handle_land_goal(self, goal_request):
+        """Action callback for accepting goal request.
+        """
+        if self._active_action_server:
+            self.get_logger().info("Land: Request already active. Stop other request to submit new one. Rejecting.")
+            return GoalResponse.REJECT
+        self._active_action_server = True
+        return GoalResponse.ACCEPT
+
+    def _handle_land_execute(self, goal: ServerGoalHandle):
         """Action callback to land vehicle.
         """
         self.get_logger().debug("Land: sent command")
         if not self.land():
             self.get_logger().error("Land: could not send command")
             goal.abort()
+            self._active_action_server = False
             return Land.Result()
         self.get_logger().debug("Land: waiting")
         start_time = self.get_clock().now()
@@ -136,17 +162,20 @@ class ADrone(AVehicle):
             if self.get_clock().now() - start_time > self._wait_moved and not self.has_moved(init_position):
                 self.get_logger().error("Land: hasn't moved aborting")
                 goal.abort()
+                self._active_action_server = False
                 return Land.Result()
             if goal.is_cancel_requested:
                 self.get_logger().info('Land: cancelling...')
                 self.halt()
                 self.get_logger().info('Land: canceled!')
                 goal.canceled()
+                self._active_action_server = False
                 return Land.Result()
             if self.is_landed():
                 if not self.disarm(): self.get_logger().warn("Land: could not disarm at end")
                 self.get_logger().info("Land: success!")
                 goal.succeed()
+                self._active_action_server = False
                 return Land.Result()
             self._check_rate.sleep()
 

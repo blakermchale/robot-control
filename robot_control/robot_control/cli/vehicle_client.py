@@ -55,7 +55,9 @@ class VehicleClient(NodeClient):
 
         # Pre-load parameters assuming types will not change
         self._node_parameters = {}
-        self.update_node_parameters()
+        # TODO(bmchale): should we be updating node params in the constructor?
+        # if add_to_executor:
+        #     self.update_node_parameters()
 
     def update_node_parameters(self):
         list_params = self.send_list_parameters()
