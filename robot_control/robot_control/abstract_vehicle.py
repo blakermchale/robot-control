@@ -25,9 +25,11 @@ from typing import List
 
 
 class AVehicle(Node):
+    """Abstract vehicle class with common utilities used across all robots.
+    """
     def __init__(self, instance=0):
         super().__init__('vehicle', allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True) # start node
-        self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
+        # self._default_callback_group = ReentrantCallbackGroup()  # ROS processes need to be run in parallel for this use case
         self.instance = instance
         self._namespace = self.get_namespace().split("/")[-1]
         self.odom = NpOdometry(
@@ -41,7 +43,7 @@ class AVehicle(Node):
         self._last_cmd_vel_time = self.get_clock().now()
         self._wait_moved = Duration(seconds=5)
         self._path_updated = False
-        self._target_path = None
+        self._target_path : Path = None
         self._target_path_idx = 0
         self._target_path_tol = 0.1
 
