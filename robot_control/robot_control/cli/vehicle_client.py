@@ -15,10 +15,11 @@ from rclpy.action import ActionClient
 
 from geometry_msgs.msg import PoseStamped, Twist, Pose, Point
 from robot_control_interfaces.msg import Waypoint
-from robot_control_interfaces.action import FollowWaypoints, GoWaypoint, RunBT
+from robot_control_interfaces.action import FollowWaypoints, GoWaypoint
 from std_srvs.srv import Trigger
 from rcl_interfaces.srv import SetParameters, GetParameters, ListParameters, DescribeParameters
 from rcl_interfaces.msg import Parameter as ParameterMsg
+from btcpp_ros2_interfaces.action import ExecuteTree
 from nav_msgs.msg import Path
 from std_msgs.msg import Header
 
@@ -39,7 +40,7 @@ class VehicleClient(NodeClient):
         self._cli_arm = self.create_client(Trigger, "arm")
         self._cli_disarm = self.create_client(Trigger, "disarm")
         self._cli_kill = self.create_client(Trigger, "kill")
-        self._cli_run_tree = ActionClient(self, RunBT, "run_tree")
+        self._cli_run_tree = ActionClient(self, ExecuteTree, "behavior_server")
         self._pub_cmd_vel = self.create_publisher(Twist, "cmd/velocity", 1)
         self._pub_cmd_ned = self.create_publisher(Pose, "cmd/ned", 1)
         self._pub_cmd_frd = self.create_publisher(Pose, "cmd/frd", 1)
@@ -84,9 +85,9 @@ class VehicleClient(NodeClient):
     def send_run_tree(self, behavior_tree: str):
         @setup_send_action(self, self._cli_run_tree, self._feedback_run_tree)
         def send_action():
-            goal = RunBT.Goal()
+            goal = ExecuteTree.Goal()
             if behavior_tree != "":
-                goal.behavior_tree = behavior_tree
+                goal.target_tree = behavior_tree
             return goal
         return send_action
 
