@@ -90,7 +90,7 @@ class Rover(Vehicle):
             # self.get_logger().info(f"x: {vel_cmd.x}, y: {vel_cmd.y}, z: {vel_cmd.z}, yaw: {vel_cmd.yaw}", throttle_duration_sec=1.0)
             self.send_velocity(vel_cmd.x, vel_cmd.y, vel_cmd.z, vel_cmd.yaw, Frame.LOCAL_NED)
         elif self.reached_target(0.001) and self.target_valid:
-            self._reset_pidctl()
+            self.halt()
         # Publish velocity constantly
         msg = Twist()
         # Flip from NED or FRD to ignition frame

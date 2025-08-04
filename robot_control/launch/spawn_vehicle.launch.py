@@ -23,7 +23,6 @@ DEFAULT_VEHICLE_YAML = os.path.join(ROBOT_CONTROL_PKG,"config/vehicle_params.yam
 
 
 def launch_setup(args):
-    print("y")
     lm = LaunchManager()
 
     # Check for empty variables

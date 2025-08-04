@@ -123,7 +123,10 @@ class AVehicle(Node):
     ## Control commands ##
     ######################
     def halt(self):
-        """Halts vehicle at current location"""
+        """Halts vehicle at current location
+        
+        Returns:
+            bool: Flag indicating successful command."""
         raise NotImplementedError
 
     def arm(self):

@@ -107,6 +107,10 @@ class DroneShell(ClientShell):
     def do_kill(self, opts):
         """Sends `kill` service."""
         resp = self.client.send_kill()
+    
+    def do_test(self, opts):
+        from ros2action.api import get_action_clients_and_servers, get_action_names_and_types
+        get_action_names_and_types()
         
     _run_tree_argparser = Cmd2ArgumentParser(description="Sends `run_tree` action.")
     _run_tree_argparser.add_argument("-t", "--tree", default="", type=str, help='BT file to read from. Uses default in action when empty.')
